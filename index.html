@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Shop Drawings & Model Log — Dashboard</title>
+
+  <!-- Tabulator -->
+  <link href="https://unpkg.com/tabulator-tables@6.2.5/dist/css/tabulator.min.css" rel="stylesheet">
+
+  <style>
+    :root { --gap: 12px; }
+    body { font-family: system-ui, Segoe UI, Arial; margin: 0; background: #f6f7fb; color: #111; }
+    header { padding: 14px 16px; background: #111827; color: #fff; }
+    header h1 { margin: 0; font-size: 16px; font-weight: 650; }
+    header .sub { opacity: .85; font-size: 12px; margin-top: 4px; }
+
+    .wrap { padding: 14px 16px; }
+    .row { display: grid; gap: var(--gap); }
+    .row.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .row.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .row.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    @media (max-width: 1100px) { .row.cols-4 { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 650px) { .row.cols-4, .row.cols-3, .row.cols-2 { grid-template-columns: 1fr; } }
+
+    .card { background: #fff; border-radius: 14px; padding: 12px; box-shadow: 0 1px 8px rgba(0,0,0,.06); }
+    .card h2 { margin: 0 0 10px; font-size: 13px; }
+    .kpi { display: flex; align-items: baseline; gap: 10px; }
+    .kpi .val { font-size: 26px; font-weight: 800; }
+    .kpi .lbl { font-size: 12px; opacity: .75; }
+
+    .controls { display: grid; gap: 10px; grid-template-columns: 1.2fr 1fr 1fr 1fr 1fr; align-items: end; }
+    @media (max-width: 1100px) { .controls { grid-template-columns: 1fr 1fr; } }
+    .ctrl label { display: block; font-size: 11px; opacity: .7; margin-bottom: 6px; }
+    .ctrl input, .ctrl select, .ctrl button {
+      width: 100%; padding: 9px 10px; border: 1px solid #e5e7eb; border-radius: 10px; background: #fff;
+      font-size: 13px;
+    }
+    .ctrl button { cursor: pointer; background: #111827; color: #fff; border: 0; }
+    .ctrl button.secondary { background: #374151; }
+    .hint { font-size: 12px; opacity: .7; margin-top: 8px; }
+
+    canvas { width: 100% !important; height: 260px !important; }
+
+    #table { border-radius: 12px; overflow: hidden; }
+    .small { font-size: 12px; opacity: .75; }
+    .pill { display: inline-block; padding: 3px 8px; border-radius: 999px; background: #eef2ff; font-size: 11px; }
+    .danger { background: #fee2e2; }
+    .warn { background: #fef3c7; }
+    .ok { background: #dcfce7; }
+
+    .footer { margin-top: 10px; font-size: 12px; opacity: .75; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  </style>
+</head>
+
+<body>
+<header>
+  <h1>Shop Drawings & Model Log — Interactive Dashboard</h1>
+  <div class="sub">Upload your CSV anytime to refresh analytics • Filters + Charts + Bottleneck Finder • Works offline (CDNs required)</div>
+</header>
+
+<div class="wrap">
+  <div class="card">
+    <div class="controls">
+      <div class="ctrl">
+        <label>Upload CSV (recommended)</label>
+        <input id="fileInput" type="file" accept=".csv" />
+      </div>
+
+      <div class="ctrl">
+        <label>Quick Search (Drawing No / Description / Workflow)</label>
+        <input id="searchBox" type="text" placeholder="Type to filter..." />
+      </div>
+
+      <div class="ctrl">
+        <label>Level</label>
+        <select id="levelFilter"><option value="">All</option></select>
+      </div>
+
+      <div class="ctrl">
+        <label>Zone</label>
+        <select id="zoneFilter"><option value="">All</option></select>
+      </div>
+
+      <div class="ctrl">
+        <label>Status-VP</label>
+        <select id="statusVpFilter"><option value="">All</option></select>
+      </div>
+
+      <div class="ctrl">
+        <label>Discipline</label>
+        <select id="disciplineFilter"><option value="">All</option></select>
+      </div>
+
+      <div class="ctrl">
+        <label>Curr. Code</label>
+        <select id="currCodeFilter"><option value="">All</option></select>
+      </div>
+
+      <div class="ctrl">
+        <label>Actions</label>
+        <div style="display:flex; gap:10px;">
+          <button id="resetBtn" class="secondary" type="button">Reset Filters</button>
+          <button id="exportBtn" type="button">Export Filtered CSV</button>
+        </div>
+        <div class="hint">Tip: the dashboard saves last loaded CSV in your browser.</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="height:12px"></div>
+
+  <div class="row cols-4">
+    <div class="card">
+      <h2>KPIs</h2>
+      <div class="kpi"><div class="val" id="kpiTotal">—</div><div class="lbl">Total rows</div></div>
+      <div class="kpi"><div class="val" id="kpiSubmitted">—</div><div class="lbl">With Workflow No.</div></div>
+      <div class="kpi"><div class="val" id="kpiCodeB">—</div><div class="lbl">Curr. Code = B</div></div>
+      <div class="kpi"><div class="val" id="kpiCodeC">—</div><div class="lbl">Curr. Code = C</div></div>
+      <div class="kpi"><div class="val" id="kpiNotStarted">—</div><div class="lbl">Status-VP contains "Not Started"</div></div>
+      <div class="footer small">These KPIs are based on current filters.</div>
+    </div>
+
+    <div class="card">
+      <h2>Distribution — Status-VP</h2>
+      <canvas id="chartStatus"></canvas>
+      <div class="small">Shows the biggest buckets only (top 10).</div>
+    </div>
+
+    <div class="card">
+      <h2>Distribution — Current Code</h2>
+      <canvas id="chartCode"></canvas>
+      <div class="small">Useful to see B/C/QA/… after applying filters.</div>
+    </div>
+
+    <div class="card">
+      <h2>Heatmap Idea — Level × Zone</h2>
+      <div id="heatmap" class="small">Load data to render…</div>
+      <div class="footer small">This is the fastest way to spot where the workload is concentrated.</div>
+    </div>
+  </div>
+
+  <div style="height:12px"></div>
+
+  <div class="row cols-2">
+    <div class="card">
+      <h2>Bottleneck Finder (Top 20)</h2>
+      <div class="small">We estimate “age” by days since the most recent available date in these columns (if present):</div>
+      <div class="small mono" style="margin:6px 0 10px;">
+        Curr. Code Date → Consult. Rep (02) → Consult. Rep (01) → Consult. Rep (00) → Consult. Sub (02) → Consult. Sub (01) → Consult. Sub (00) → SBG Approval → SBG Sub
+      </div>
+      <div id="bottlenecks"></div>
+      <div class="footer small">If dates are missing, the item is treated as unknown age.</div>
+    </div>
+
+    <div class="card">
+      <h2>Data Quality Alerts</h2>
+      <div id="alerts"></div>
+      <div class="footer small">This helps you catch items that can break submissions (missing workflow, missing rev, etc.).</div>
+    </div>
+  </div>
+
+  <div style="height:12px"></div>
+
+  <div class="card">
+    <h2>Interactive Table</h2>
+    <div class="small">Search, filter, sort, group, and export the filtered rows.</div>
+    <div style="height:10px"></div>
+    <div id="table"></div>
+  </div>
+</div>
+
+<!-- Libraries -->
+<script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://unpkg.com/tabulator-tables@6.2.5/dist/js/tabulator.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+<script>
+  // ---------- Helpers ----------
+  const LS_KEY = "shopdrawings_last_csv_text_v1";
+
+  function norm(v){
+    if(v === null || v === undefined) return "";
+    const s = String(v).trim();
+    if(s === "-" || s === "NaN" || s === "nan") return "";
+    return s;
+  }
+
+  function parseDateSafe(v){
+    const s = norm(v);
+    if(!s) return null;
+    // expected formats like 2026-01-19
+    const d = new Date(s);
+    if(!isNaN(d.getTime())) return d;
+    return null;
+  }
+
+  function daysBetween(d1, d2){
+    const ms = d2.getTime() - d1.getTime();
+    return Math.floor(ms / (1000*60*60*24));
+  }
+
+  function uniqSorted(arr){
+    return [...new Set(arr.filter(x => x !== ""))].sort((a,b) => a.localeCompare(b, undefined, {numeric:true, sensitivity:"base"}));
+  }
+
+  function countBy(rows, key){
+    const m = new Map();
+    rows.forEach(r => {
+      const k = norm(r[key]) || "(blank)";
+      m.set(k, (m.get(k)||0) + 1);
+    });
+    return [...m.entries()].sort((a,b) => b[1]-a[1]);
+  }
+
+  function setSelectOptions(selectEl, values){
+    const current = selectEl.value;
+    selectEl.innerHTML = `<option value="">All</option>` + values.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
+    // try keep selection if still exists
+    const exists = values.includes(current);
+    selectEl.value = exists ? current : "";
+  }
+
+  function escapeHtml(str){
+    return String(str)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function pill(text, cls){
+    return `<span class="pill ${cls||""}">${escapeHtml(text)}</span>`;
+  }
+
+  // ---------- State ----------
+  let rawRows = [];
+  let filteredRows = [];
+  let table = null;
+
+  let chartStatus = null;
+  let chartCode = null;
+
+  const els = {
+    fileInput: document.getElementById("fileInput"),
+    searchBox: document.getElementById("searchBox"),
+    levelFilter: document.getElementById("levelFilter"),
+    zoneFilter: document.getElementById("zoneFilter"),
+    statusVpFilter: document.getElementById("statusVpFilter"),
+    disciplineFilter: document.getElementById("disciplineFilter"),
+    currCodeFilter: document.getElementById("currCodeFilter"),
+    resetBtn: document.getElementById("resetBtn"),
+    exportBtn: document.getElementById("exportBtn"),
+
+    kpiTotal: document.getElementById("kpiTotal"),
+    kpiSubmitted: document.getElementById("kpiSubmitted"),
+    kpiCodeB: document.getElementById("kpiCodeB"),
+    kpiCodeC: document.getElementById("kpiCodeC"),
+    kpiNotStarted: document.getElementById("kpiNotStarted"),
+
+    heatmap: document.getElementById("heatmap"),
+    bottlenecks: document.getElementById("bottlenecks"),
+    alerts: document.getElementById("alerts"),
+
+    chartStatusCanvas: document.getElementById("chartStatus"),
+    chartCodeCanvas: document.getElementById("chartCode"),
+  };
+
+  // ---------- Load CSV ----------
+  function loadCsvText(csvText){
+    try { localStorage.setItem(LS_KEY, csvText); } catch(e) {}
+
+
+    Papa.parse(csvText, {
+      header: true,
+      skipEmptyLines: true,
+      dynamicTyping: false,
+      complete: (results) => {
+        rawRows = (results.data || []).map(r => normalizeRow(r)).filter(r => Object.keys(r).length > 0);
+        // drop obvious title rows if present
+        rawRows = rawRows.filter(r => norm(r["Drawing No."]) || norm(r["S.N."]));
+        initUIFromData();
+        applyAll();
+      },
+      error: (err) => {
+        alert("CSV parse error: " + err);
+      }
+    });
+  }
+
+  function normalizeRow(r){
+    // make sure keys are exactly as in CSV
+    const out = {};
+    Object.keys(r).forEach(k => out[k.trim()] = r[k]);
+    return out;
+  }
+
+  // ---------- Filters ----------
+  function applyAll(){
+    const q = norm(els.searchBox.value).toLowerCase();
+    const fLevel = norm(els.levelFilter.value);
+    const fZone = norm(els.zoneFilter.value);
+    const fStatusVp = norm(els.statusVpFilter.value);
+    const fDisc = norm(els.disciplineFilter.value);
+    const fCode = norm(els.currCodeFilter.value);
+
+    filteredRows = rawRows.filter(r => {
+      if(fLevel && norm(r["Level"]) !== fLevel) return false;
+      if(fZone && norm(r["Zone"]) !== fZone) return false;
+      if(fStatusVp && norm(r["Status-VP"]) !== fStatusVp) return false;
+      if(fDisc && norm(r["Discipline"]) !== fDisc) return false;
+      if(fCode && norm(r["Curr. Code"]) !== fCode) return false;
+
+      if(q){
+        const hay = [
+          r["Drawing No."], r["Description"], r["Workflow No."],
+          r["Workflow No. (01)"], r["Workflow No. (02)"],
+          r["Status-VP"], r["Status-SBG"], r["Remarks"]
+        ].map(norm).join(" ").toLowerCase();
+        if(!hay.includes(q)) return false;
+      }
+      return true;
+    });
+
+    updateKPIs();
+    updateCharts();
+    updateHeatmap();
+    updateBottlenecks();
+    updateAlerts();
+    updateTable();
+  }
+
+  // ---------- UI init ----------
+  function initUIFromData(){
+    const levels = uniqSorted(rawRows.map(r => norm(r["Level"])));
+    const zones = uniqSorted(rawRows.map(r => norm(r["Zone"])));
+    const statusVp = uniqSorted(rawRows.map(r => norm(r["Status-VP"])));
+    const discs = uniqSorted(rawRows.map(r => norm(r["Discipline"])));
+    const codes = uniqSorted(rawRows.map(r => norm(r["Curr. Code"])));
+
+    setSelectOptions(els.levelFilter, levels);
+    setSelectOptions(els.zoneFilter, zones);
+    setSelectOptions(els.statusVpFilter, statusVp);
+    setSelectOptions(els.disciplineFilter, discs);
+    setSelectOptions(els.currCodeFilter, codes);
+
+    if(!table){
+      const preferredCols = [
+        "S.N.", "Drawing No.", "Description", "Stage", "Building", "Discipline", "Sub-Discipline",
+        "Level", "Zone", "Part", "Sub_Part",
+        "Status-VP", "Status-SBG", "Curr. Code", "Curr. Code Date", "Curr. Code Rev",
+        "Workflow No.", "Remarks",
+        "Workflow No. (01)", "Status (01)", "Code (01)",
+        "Workflow No. (02)", "Status (02)", "Code (02)",
+      ];
+
+      const allKeys = Object.keys(rawRows[0] || {});
+      const cols = preferredCols.filter(c => allKeys.includes(c))
+        .concat(allKeys.filter(k => !preferredCols.includes(k)));
+
+      const tabCols = cols.map(c => ({
+        title: c,
+        field: c,
+        headerFilter: false,
+        hozAlign: "left",
+        widthGrow: 2,
+        formatter: (cell) => {
+          const v = norm(cell.getValue());
+          if(!v) return "";
+          if(c === "Curr. Code"){
+            const cls = v === "C" ? "danger" : (v === "B" ? "warn" : (v === "QA" ? "ok" : ""));
+            return pill(v, cls);
+          }
+          if(c === "Status-VP"){
+            if(v.includes("Not Started")) return pill(v, "danger");
+            if(v.includes("On Hold")) return pill(v, "warn");
+            if(v === "B") return pill("B", "warn");
+            if(v === "C") return pill("C", "danger");
+            return escapeHtml(v);
+          }
+          return escapeHtml(v);
+        }
+      }));
+
+      table = new Tabulator("#table", {
+        data: [],
+        columns: tabCols,
+        layout: "fitDataStretch",
+        height: "520px",
+        pagination: true,
+        paginationSize: 25,
+        movableColumns: true,
+        resizableColumnFit: true,
+        placeholder: "Upload CSV to see data…",
+      });
+    }
+  }
+
+  // ---------- KPIs ----------
+  function updateKPIs(){
+    const rows = filteredRows;
+    const total = rows.length;
+
+    const withWF = rows.filter(r => norm(r["Workflow No."]) || norm(r["Workflow No. (01)"]) || norm(r["Workflow No. (02)"])).length;
+    const codeB = rows.filter(r => norm(r["Curr. Code"]) === "B").length;
+    const codeC = rows.filter(r => norm(r["Curr. Code"]) === "C").length;
+    const notStarted = rows.filter(r => norm(r["Status-VP"]).toLowerCase().includes("not started")).length;
+
+    els.kpiTotal.textContent = total.toLocaleString();
+    els.kpiSubmitted.textContent = withWF.toLocaleString();
+    els.kpiCodeB.textContent = codeB.toLocaleString();
+    els.kpiCodeC.textContent = codeC.toLocaleString();
+    els.kpiNotStarted.textContent = notStarted.toLocaleString();
+  }
+
+  // ---------- Charts ----------
+  function renderBarChart(chartRef, canvas, labels, data, title){
+    if(chartRef) chartRef.destroy();
+    return new Chart(canvas, {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [{ label: title, data }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { enabled: true },
+        },
+        scales: {
+          x: { ticks: { autoSkip: false, maxRotation: 60, minRotation: 0 } },
+          y: { beginAtZero: true }
+        }
+      }
+    });
+  }
+
+  function updateCharts(){
+    const topStatus = countBy(filteredRows, "Status-VP").slice(0,10);
+    const topCode = countBy(filteredRows, "Curr. Code").slice(0,10);
+
+    chartStatus = renderBarChart(chartStatus, els.chartStatusCanvas,
+      topStatus.map(x => x[0]), topStatus.map(x => x[1]), "Status-VP"
+    );
+    chartCode = renderBarChart(chartCode, els.chartCodeCanvas,
+      topCode.map(x => x[0]), topCode.map(x => x[1]), "Curr. Code"
+    );
+  }
+
+  // ---------- Heatmap (Level × Zone) ----------
+  function updateHeatmap(){
+    const rows = filteredRows;
+    const levels = uniqSorted(rows.map(r => norm(r["Level"])));
+    const zones = uniqSorted(rows.map(r => norm(r["Zone"])));
+
+    if(levels.length === 0 || zones.length === 0){
+      els.heatmap.innerHTML = "No data after filtering.";
+      return;
+    }
+
+    // matrix counts
+    const m = {};
+    levels.forEach(L => { m[L] = {}; zones.forEach(Z => m[L][Z] = 0); });
+    rows.forEach(r => {
+      const L = norm(r["Level"]), Z = norm(r["Zone"]);
+      if(L && Z && m[L] && m[L][Z] !== undefined) m[L][Z] += 1;
+    });
+
+    const max = Math.max(...levels.flatMap(L => zones.map(Z => m[L][Z])));
+
+    let html = `<div style="overflow:auto"><table style="border-collapse:collapse; width:100%; font-size:12px">`;
+    html += `<tr><th style="text-align:left; padding:6px; border-bottom:1px solid #e5e7eb">Level \\ Zone</th>`;
+    zones.forEach(Z => html += `<th style="text-align:center; padding:6px; border-bottom:1px solid #e5e7eb">${escapeHtml(Z)}</th>`);
+    html += `</tr>`;
+
+    levels.forEach(L => {
+      html += `<tr><td style="padding:6px; border-bottom:1px solid #f1f5f9"><b>${escapeHtml(L)}</b></td>`;
+      zones.forEach(Z => {
+        const v = m[L][Z];
+        const intensity = max ? Math.round((v / max) * 80) : 0; // 0..80
+        html += `<td style="
+          text-align:center; padding:6px; border-bottom:1px solid #f1f5f9;
+          background: rgba(17,24,39, ${intensity/100});
+          color: ${intensity>40 ? "#fff" : "#111"};
+          border-radius:8px;">
+          ${v}
+        </td>`;
+      });
+      html += `</tr>`;
+    });
+    html += `</table></div>`;
+
+    els.heatmap.innerHTML = html;
+  }
+
+  // ---------- Bottlenecks ----------
+  function getLastTouchDate(row){
+    const priorityCols = [
+      "Curr. Code Date",
+      "Consult. Rep (02)", "Consult. Rep (01)", "Consult. Rep (00)",
+      "Consult. Sub (02)", "Consult. Sub (01)", "Consult. Sub (00)",
+      "SBG Approval (0)", "SBG Approval (01)", "SBG Approval (02)",
+      "SBG Sub (02)", "SBG Sub (01)", "SBG Sub (00)",
+      "1-100 Sub.", "1-50 Sub."
+    ];
+
+    for(const c of priorityCols){
+      if(row[c] !== undefined){
+        const d = parseDateSafe(row[c]);
+        if(d) return { date: d, col: c };
+      }
+    }
+    return null;
+  }
+
+  function updateBottlenecks(){
+    const now = new Date();
+    const enriched = filteredRows.map(r => {
+      const last = getLastTouchDate(r);
+      const age = last ? daysBetween(last.date, now) : null;
+      return { r, last, age };
+    });
+
+    // focus on items that are not clearly finished (you can adjust rules)
+    const candidates = enriched
+      .filter(x => {
+        const st = norm(x.r["Status-VP"]).toLowerCase();
+        // keep anything that is not started / on hold / under review / review buckets / or missing code
+        if(!norm(x.r["Curr. Code"])) return true;
+        if(st.includes("not started") || st.includes("on hold") || st.includes("review") || st.includes("u/r")) return true;
+        if(norm(x.r["Curr. Code"]) === "C") return true;
+        return false;
+      })
+      .sort((a,b) => (b.age ?? -1) - (a.age ?? -1))
+      .slice(0, 20);
+
+    if(candidates.length === 0){
+      els.bottlenecks.innerHTML = `<div class="small">No bottlenecks found with current filters.</div>`;
+      return;
+    }
+
+    let html = `<div style="display:grid; gap:10px;">`;
+    candidates.forEach(x => {
+      const dn = norm(x.r["Drawing No."]) || "(no drawing no)";
+      const desc = norm(x.r["Description"]);
+      const level = norm(x.r["Level"]);
+      const zone = norm(x.r["Zone"]);
+      const st = norm(x.r["Status-VP"]) || "(blank)";
+      const code = norm(x.r["Curr. Code"]) || "(blank)";
+      const wf = norm(x.r["Workflow No."]) || norm(x.r["Workflow No. (01)"]) || norm(x.r["Workflow No. (02)"]) || "";
+
+      const ageText = x.age === null ? pill("Unknown age", "warn") : pill(`${x.age} days`, x.age > 30 ? "danger" : (x.age > 14 ? "warn" : "ok"));
+      const lastText = x.last ? `<span class="small">Last date: <span class="mono">${escapeHtml(x.last.col)}</span> = <span class="mono">${escapeHtml(x.last.date.toISOString().slice(0,10))}</span></span>` : `<span class="small">Last date: (none)</span>`;
+
+      html += `
+        <div style="padding:10px; border:1px solid #eef2f7; border-radius:12px;">
+          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:6px;">
+            ${ageText}
+            ${pill(`L:${level || "-"}`, "")}
+            ${pill(`Z:${zone || "-"}`, "")}
+            ${pill(`Code:${code}`, code==="C"?"danger":(code==="B"?"warn":""))}
+            ${pill(`Status:${st}`, st.toLowerCase().includes("not started")?"danger":(st.toLowerCase().includes("on hold")?"warn":""))}
+          </div>
+          <div class="mono" style="font-size:12px; font-weight:700; margin-bottom:4px;">${escapeHtml(dn)}</div>
+          <div class="small" style="margin-bottom:6px;">${escapeHtml(desc)}</div>
+          <div class="small">${lastText}${wf ? ` • Workflow: <span class="mono">${escapeHtml(wf)}</span>` : ""}</div>
+        </div>
+      `;
+    });
+    html += `</div>`;
+    els.bottlenecks.innerHTML = html;
+  }
+
+  // ---------- Alerts ----------
+  function updateAlerts(){
+    const rows = filteredRows;
+
+    const missingWorkflow = rows.filter(r => {
+      const st = norm(r["Status-VP"]).toLowerCase();
+      const hasWF = norm(r["Workflow No."]) || norm(r["Workflow No. (01)"]) || norm(r["Workflow No. (02)"]);
+      // if it is in review/submitted but no workflow
+      if((st.includes("review") || st.includes("u/r") || norm(r["Curr. Code"])) && !hasWF) return true;
+      return false;
+    }).length;
+
+    const missingLevelZone = rows.filter(r => !norm(r["Level"]) || !norm(r["Zone"])).length;
+    const missingCurrCode = rows.filter(r => !norm(r["Curr. Code"]) || norm(r["Curr. Code"]) === "-").length;
+    const codeCNoRemarks = rows.filter(r => norm(r["Curr. Code"]) === "C" && !norm(r["Remarks"]) && !norm(r["Remarks (00)"]) && !norm(r["Remarks (01)"]) && !norm(r["Remarks (02)"])).length;
+
+    const alerts = [
+      { name: "Likely submitted/reviewed but missing Workflow No.", val: missingWorkflow, cls: missingWorkflow ? "danger" : "ok" },
+      { name: "Missing Level or Zone", val: missingLevelZone, cls: missingLevelZone ? "warn" : "ok" },
+      { name: "Missing / '-' Curr. Code", val: missingCurrCode, cls: missingCurrCode ? "warn" : "ok" },
+      { name: "Curr. Code = C but no remarks found", val: codeCNoRemarks, cls: codeCNoRemarks ? "danger" : "ok" },
+    ];
+
+    let html = `<div style="display:grid; gap:10px;">`;
+    alerts.forEach(a => {
+      html += `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; border:1px solid #eef2f7; border-radius:12px;">
+          <div class="small">${escapeHtml(a.name)}</div>
+          <div>${pill(a.val.toLocaleString(), a.cls)}</div>
+        </div>
+      `;
+    });
+    html += `</div>`;
+    els.alerts.innerHTML = html;
+  }
+
+  // ---------- Table ----------
+  function updateTable(){
+    if(!table) return;
+    table.setData(filteredRows);
+  }
+
+  // ---------- Export filtered ----------
+  function exportFilteredCsv(){
+    if(filteredRows.length === 0){
+      alert("No rows to export (filters removed everything).");
+      return;
+    }
+    const cols = Object.keys(filteredRows[0]);
+    const lines = [];
+    lines.push(cols.map(csvEscape).join(","));
+    filteredRows.forEach(r => {
+      lines.push(cols.map(c => csvEscape(r[c])).join(","));
+    });
+    const blob = new Blob([lines.join("\n")], {type: "text/csv;charset=utf-8"});
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "filtered_shopdrawings.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function csvEscape(v){
+    const s = (v === null || v === undefined) ? "" : String(v);
+    if(/[",\n]/.test(s)) return `"${s.replaceAll('"', '""')}"`;
+    return s;
+  }
+
+  // ---------- Events ----------
+  els.fileInput.addEventListener("change", (e) => {
+    const f = e.target.files?.[0];
+    if(!f) return;
+    const reader = new FileReader();
+    reader.onload = () => loadCsvText(String(reader.result || ""));
+    reader.readAsText(f);
+  });
+
+  ["input","change"].forEach(ev => {
+    els.searchBox.addEventListener(ev, applyAll);
+    els.levelFilter.addEventListener(ev, applyAll);
+    els.zoneFilter.addEventListener(ev, applyAll);
+    els.statusVpFilter.addEventListener(ev, applyAll);
+    els.disciplineFilter.addEventListener(ev, applyAll);
+    els.currCodeFilter.addEventListener(ev, applyAll);
+  });
+
+  els.resetBtn.addEventListener("click", () => {
+    els.searchBox.value = "";
+    els.levelFilter.value = "";
+    els.zoneFilter.value = "";
+    els.statusVpFilter.value = "";
+    els.disciplineFilter.value = "";
+    els.currCodeFilter.value = "";
+    applyAll();
+  });
+
+  els.exportBtn.addEventListener("click", exportFilteredCsv);
+
+  // ---------- Auto load last CSV ----------
+  (function boot(){
+  // Don't build Tabulator before we know the columns.
+  // Just wait for user upload (more stable).
+  try {
+    const last = localStorage.getItem(LS_KEY);
+    if(last && last.length > 50){
+      loadCsvText(last);
+    }
+  } catch (e) {
+    // Storage may be blocked by Edge Tracking Prevention (safe to ignore)
+    console.warn("Storage blocked (Edge Tracking Prevention). Auto-load disabled.");
+  }
+})();
+
+
+</script>
+</body>
+</html>
