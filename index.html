@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Shop Drawings & Model Log — Dashboard</title>
+  <title>KFSC — Shop Drawings & Model Log Dashboard</title>
 
   <!-- Tabulator -->
   <link href="https://unpkg.com/tabulator-tables@6.2.5/dist/css/tabulator.min.css" rel="stylesheet">
@@ -38,26 +38,41 @@
     }
     .ctrl button { cursor: pointer; background: #111827; color: #fff; border: 0; }
     .ctrl button.secondary { background: #374151; }
+    .ctrl button.ghost { background: #eef2ff; color: #111827; border: 1px solid #e5e7eb; }
     .hint { font-size: 12px; opacity: .7; margin-top: 8px; }
 
     canvas { width: 100% !important; height: 260px !important; }
 
     #table { border-radius: 12px; overflow: hidden; }
     .small { font-size: 12px; opacity: .75; }
+
     .pill { display: inline-block; padding: 3px 8px; border-radius: 999px; background: #eef2ff; font-size: 11px; }
     .danger { background: #fee2e2; }
     .warn { background: #fef3c7; }
     .ok { background: #dcfce7; }
+    .muted { background: #f3f4f6; }
 
     .footer { margin-top: 10px; font-size: 12px; opacity: .75; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+    .twoActions { display:flex; gap:10px; flex-wrap:wrap; }
+    .miniActions { display:flex; gap:10px; }
+    .bList { display:grid; gap:10px; }
+    .bItem { padding:10px; border:1px solid #eef2f7; border-radius:12px; }
+    .bTitle { font-size:12px; font-weight:750; }
+    .bDesc { font-size:12px; opacity:.8; margin-top:4px; }
+    .bMeta { font-size:12px; opacity:.75; margin-top:6px; }
+    .clickHint { font-size: 12px; opacity: .7; margin-top: 6px; }
+    .divider { height: 1px; background: #eef2f7; margin: 10px 0; }
+
+    .activeFilters { display:flex; gap:8px; flex-wrap:wrap; }
   </style>
 </head>
 
 <body>
 <header>
-  <h1>Shop Drawings & Model Log — Interactive Dashboard</h1>
-  <div class="sub">Upload your CSV anytime to refresh analytics • Filters + Charts + Table • Header auto-detect for your export format</div>
+  <h1>KFSC — Shop Drawings & Model Log Dashboard</h1>
+  <div class="sub">Actionable: Aging + Bottlenecks + Group Board • Click charts/heatmap to filter • Shareable URL</div>
 </header>
 
 <div class="wrap">
@@ -100,13 +115,19 @@
 
       <div class="ctrl">
         <label>Actions</label>
-        <div style="display:flex; gap:10px;">
+        <div class="twoActions">
           <button id="resetBtn" class="secondary" type="button">Reset Filters</button>
           <button id="exportBtn" type="button">Export Filtered CSV</button>
+          <button id="exportGroupsBtn" class="ghost" type="button">Export Group Board CSV</button>
+          <button id="copyLinkBtn" class="ghost" type="button">Copy Share Link</button>
         </div>
-        <div class="hint">If Edge blocks storage, auto-load is disabled (no impact on loading CSV).</div>
+        <div class="hint">Tip: click bars/heatmap cells to filter. Filters are stored in URL.</div>
       </div>
     </div>
+
+    <div class="divider"></div>
+    <div class="small">Active filters:</div>
+    <div id="activeFilters" class="activeFilters" style="margin-top:8px;"></div>
   </div>
 
   <div style="height:12px"></div>
@@ -119,25 +140,48 @@
       <div class="kpi"><div class="val" id="kpiCodeB">—</div><div class="lbl">Curr. Code = B</div></div>
       <div class="kpi"><div class="val" id="kpiCodeC">—</div><div class="lbl">Curr. Code = C</div></div>
       <div class="kpi"><div class="val" id="kpiNotStarted">—</div><div class="lbl">Status-VP contains "Not Started"</div></div>
-      <div class="footer small">KPIs are based on current filters.</div>
+      <div class="footer small">KPIs based on current filters.</div>
     </div>
 
     <div class="card">
       <h2>Distribution — Status-VP</h2>
       <canvas id="chartStatus"></canvas>
-      <div class="small">Top 10 only.</div>
+      <div class="clickHint">Click a bar to filter Status-VP.</div>
     </div>
 
     <div class="card">
       <h2>Distribution — Current Code</h2>
       <canvas id="chartCode"></canvas>
-      <div class="small">Top 10 only.</div>
+      <div class="clickHint">Click a bar to filter Curr. Code.</div>
     </div>
 
     <div class="card">
       <h2>Heatmap — Level × Zone</h2>
       <div id="heatmap" class="small">Upload CSV to render…</div>
-      <div class="footer small">Fast way to spot workload concentration.</div>
+      <div class="clickHint">Click a cell to filter Level + Zone.</div>
+    </div>
+  </div>
+
+  <div style="height:12px"></div>
+
+  <div class="row cols-2">
+    <div class="card">
+      <h2>Action Board — Top Bottlenecks (Oldest 20)</h2>
+      <div class="small">
+        Aging uses best available date (priority): <span class="mono">Curr. Code Date → Consult. Rep → Consult. Sub → SBG Approval/Sub</span>.
+      </div>
+      <div style="height:10px"></div>
+      <div id="bottlenecks" class="bList"></div>
+    </div>
+
+    <div class="card">
+      <h2>Group Board (worst-first)</h2>
+      <div class="small">
+        Grouping: <span class="mono">Level + Zone + Discipline + Sub-Discipline</span>
+      </div>
+      <div style="height:10px"></div>
+      <div id="groupBoard"></div>
+      <div class="footer small" id="loadInfo"></div>
     </div>
   </div>
 
@@ -145,10 +189,9 @@
 
   <div class="card">
     <h2>Interactive Table</h2>
-    <div class="small">Search, filter, sort, group, and export the filtered rows.</div>
+    <div class="small">Now includes <b>AgingDays</b> and <b>SLA</b> columns. Frozen first columns for daily use.</div>
     <div style="height:10px"></div>
     <div id="table"></div>
-    <div class="footer small" id="loadInfo"></div>
   </div>
 </div>
 
@@ -158,13 +201,15 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
 <script>
-  // ---------- Helpers ----------
-  const LS_KEY = "shopdrawings_last_csv_text_v2";
+  // ---------------------------
+  // Helpers
+  // ---------------------------
+  const LS_KEY = "kfsc_shopdrawings_last_csv_v3";
 
   function norm(v){
     if(v === null || v === undefined) return "";
     const s = String(v).trim();
-    if(s === "-" || s === "NaN" || s === "nan") return "";
+    if(s === "-" || s.toLowerCase() === "nan") return "";
     return s;
   }
 
@@ -181,6 +226,24 @@
     return [...new Set(arr.filter(x => x !== ""))].sort((a,b) => a.localeCompare(b, undefined, {numeric:true, sensitivity:"base"}));
   }
 
+  function pill(text, cls){
+    return `<span class="pill ${cls||""}">${escapeHtml(text)}</span>`;
+  }
+
+  function parseDateSafe(v){
+    const s = norm(v);
+    if(!s) return null;
+    // works for YYYY-MM-DD and many excel exports
+    const d = new Date(s);
+    if(!isNaN(d.getTime())) return d;
+    return null;
+  }
+
+  function daysBetween(d1, d2){
+    const ms = d2.getTime() - d1.getTime();
+    return Math.floor(ms / (1000*60*60*24));
+  }
+
   function countBy(rows, key){
     const m = new Map();
     rows.forEach(r => {
@@ -190,22 +253,17 @@
     return [...m.entries()].sort((a,b) => b[1]-a[1]);
   }
 
-  function setSelectOptions(selectEl, values){
-    const current = selectEl.value;
-    selectEl.innerHTML = `<option value="">All</option>` + values.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
-    selectEl.value = values.includes(current) ? current : "";
-  }
-
-  function pill(text, cls){
-    return `<span class="pill ${cls||""}">${escapeHtml(text)}</span>`;
-  }
-
-  // ---------- State ----------
+  // ---------------------------
+  // State
+  // ---------------------------
   let rawRows = [];
   let filteredRows = [];
   let table = null;
+
   let chartStatus = null;
   let chartCode = null;
+
+  let lastHeaderLine = null;
 
   const els = {
     fileInput: document.getElementById("fileInput"),
@@ -215,9 +273,13 @@
     statusVpFilter: document.getElementById("statusVpFilter"),
     disciplineFilter: document.getElementById("disciplineFilter"),
     currCodeFilter: document.getElementById("currCodeFilter"),
+
     resetBtn: document.getElementById("resetBtn"),
     exportBtn: document.getElementById("exportBtn"),
-    loadInfo: document.getElementById("loadInfo"),
+    exportGroupsBtn: document.getElementById("exportGroupsBtn"),
+    copyLinkBtn: document.getElementById("copyLinkBtn"),
+
+    activeFilters: document.getElementById("activeFilters"),
 
     kpiTotal: document.getElementById("kpiTotal"),
     kpiSubmitted: document.getElementById("kpiSubmitted"),
@@ -225,17 +287,23 @@
     kpiCodeC: document.getElementById("kpiCodeC"),
     kpiNotStarted: document.getElementById("kpiNotStarted"),
 
-    heatmap: document.getElementById("heatmap"),
     chartStatusCanvas: document.getElementById("chartStatus"),
     chartCodeCanvas: document.getElementById("chartCode"),
+
+    heatmap: document.getElementById("heatmap"),
+    bottlenecks: document.getElementById("bottlenecks"),
+    groupBoard: document.getElementById("groupBoard"),
+    loadInfo: document.getElementById("loadInfo"),
   };
 
-  // ---------- Header auto-detect for your export ----------
+  // ---------------------------
+  // Header detection for your export
+  // ---------------------------
   function detectHeaderRow(lines){
     const mustHave = ["S.N.", "Drawing No.", "Description"];
     const shouldHave = ["Level", "Zone", "Discipline", "Status-VP", "Curr. Code", "Workflow No."];
 
-    for(let i=0; i<Math.min(lines.length, 120); i++){
+    for(let i=0; i<Math.min(lines.length, 150); i++){
       const line = lines[i] || "";
       const mustHits = mustHave.filter(h => line.includes(h)).length;
       const shouldHits = shouldHave.filter(h => line.includes(h)).length;
@@ -257,16 +325,110 @@
     });
   }
 
-  function normalizeRowKeys(row){
-    const out = {};
-    Object.keys(row).forEach(k => {
-      const nk = (k || "").trim();
-      out[nk] = row[k];
-    });
-    return out;
+  // ---------------------------
+  // Aging & SLA (core feature)
+  // ---------------------------
+  function getBestTouchDate(row){
+    // Priority order based on your CSV structure
+    const priorityCols = [
+      "Curr. Code Date",
+      "Consult. Rep (02)", "Consult. Rep (01)", "Consult. Rep (00)",
+      "Consult. Sub (02)", "Consult. Sub (01)", "Consult. Sub (00)",
+      "SBG Approval (02)", "SBG Approval (01)", "SBG Approval (0)",
+      "SBG Sub (02)", "SBG Sub (01)", "SBG Sub (00)",
+    ];
+
+    for(const c of priorityCols){
+      if(row[c] !== undefined){
+        const d = parseDateSafe(row[c]);
+        if(d) return { date: d, source: c };
+      }
+    }
+    return null;
   }
 
-  // ---------- Load CSV ----------
+  function computeAgingAndSLA(row){
+    const now = new Date();
+    const last = getBestTouchDate(row);
+    if(!last) return { agingDays: "", agingSource: "", sla: "Unknown" };
+
+    const age = daysBetween(last.date, now);
+    let sla = "OK";
+    if(age > 30) sla = "Over 30d";
+    else if(age > 14) sla = "Over 14d";
+    else if(age > 7) sla = "Over 7d";
+
+    return { agingDays: age, agingSource: last.source, sla };
+  }
+
+  // ---------------------------
+  // URL filters (shareable)
+  // ---------------------------
+  function getFiltersFromUI(){
+    return {
+      q: norm(els.searchBox.value),
+      level: norm(els.levelFilter.value),
+      zone: norm(els.zoneFilter.value),
+      statusVp: norm(els.statusVpFilter.value),
+      discipline: norm(els.disciplineFilter.value),
+      code: norm(els.currCodeFilter.value),
+    };
+  }
+
+  function setFiltersToUI(f){
+    els.searchBox.value = f.q || "";
+    els.levelFilter.value = f.level || "";
+    els.zoneFilter.value = f.zone || "";
+    els.statusVpFilter.value = f.statusVp || "";
+    els.disciplineFilter.value = f.discipline || "";
+    els.currCodeFilter.value = f.code || "";
+  }
+
+  function writeFiltersToURL(){
+    const f = getFiltersFromUI();
+    const params = new URLSearchParams();
+    Object.entries(f).forEach(([k,v]) => { if(v) params.set(k, v); });
+    const newUrl = `${location.pathname}?${params.toString()}`;
+    history.replaceState(null, "", newUrl);
+  }
+
+  function readFiltersFromURL(){
+    const p = new URLSearchParams(location.search);
+    return {
+      q: p.get("q") || "",
+      level: p.get("level") || "",
+      zone: p.get("zone") || "",
+      statusVp: p.get("statusVp") || "",
+      discipline: p.get("discipline") || "",
+      code: p.get("code") || "",
+    };
+  }
+
+  function renderActiveFilters(){
+    const f = getFiltersFromUI();
+    const chips = [];
+    if(f.q) chips.push(pill(`Search: ${f.q}`, "muted"));
+    if(f.level) chips.push(pill(`Level: ${f.level}`, "muted"));
+    if(f.zone) chips.push(pill(`Zone: ${f.zone}`, "muted"));
+    if(f.statusVp) chips.push(pill(`Status-VP: ${f.statusVp}`, "muted"));
+    if(f.discipline) chips.push(pill(`Discipline: ${f.discipline}`, "muted"));
+    if(f.code) chips.push(pill(`Curr Code: ${f.code}`, "muted"));
+    els.activeFilters.innerHTML = chips.length ? chips.join(" ") : pill("None", "muted");
+  }
+
+  async function copyShareLink(){
+    const url = location.href;
+    try {
+      await navigator.clipboard.writeText(url);
+      alert("Link copied ✅");
+    } catch(e){
+      prompt("Copy this link:", url);
+    }
+  }
+
+  // ---------------------------
+  // Load CSV
+  // ---------------------------
   function loadCsvText(csvText){
     try { localStorage.setItem(LS_KEY, csvText); } catch(e) {}
 
@@ -274,13 +436,13 @@
     const headerIndex = detectHeaderRow(lines);
 
     if(headerIndex === -1){
-      alert("Header row not found. Your CSV export contains pre-header lines; please ensure it includes 'S.N., Drawing No., Description, ...'");
+      alert("Header row not found. Ensure CSV contains: S.N., Drawing No., Description, ...");
       console.log("First 30 lines:", lines.slice(0,30));
       return;
     }
 
+    lastHeaderLine = headerIndex + 1;
     const cleanCsv = lines.slice(headerIndex).join("\n");
-    console.log("Detected header row at line:", headerIndex + 1);
 
     Papa.parse(cleanCsv, {
       header: true,
@@ -290,22 +452,27 @@
         const rawFields = results.meta?.fields || [];
         const uniqueFields = makeHeadersUnique(rawFields);
 
-        // Re-map rows to unique field names (Papa uses raw fields as keys)
         rawRows = (results.data || []).map(r => {
           const out = {};
           rawFields.forEach((f, i) => out[uniqueFields[i]] = r[f]);
-          return normalizeRowKeys(out);
+
+          // Add computed columns
+          const computed = computeAgingAndSLA(out);
+          out["AgingDays"] = computed.agingDays;
+          out["AgingSource"] = computed.agingSource;
+          out["SLA"] = computed.sla;
+
+          return out;
         });
 
-        // Filter out completely empty rows (export has blank separators)
+        // remove empty separators
         rawRows = rawRows.filter(r => Object.values(r).some(v => norm(v)));
 
-        // Build UI + table AFTER data exists (avoid Tabulator init crash)
-        buildUIFromData(uniqueFields);
+        buildUIFromData(uniqueFields.concat(["AgingDays","AgingSource","SLA"]));
         applyAll();
 
         els.loadInfo.innerHTML =
-          `Loaded <b>${rawRows.length.toLocaleString()}</b> rows • Header detected at line <b>${headerIndex+1}</b>.`;
+          `Loaded <b>${rawRows.length.toLocaleString()}</b> rows • Header line <b>${lastHeaderLine}</b>.`;
       },
       error: (err) => {
         alert("CSV parse error: " + err);
@@ -314,7 +481,9 @@
     });
   }
 
-  // ---------- Build UI (and rebuild table safely) ----------
+  // ---------------------------
+  // Build UI + Tabulator (rebuild each load)
+  // ---------------------------
   function buildUIFromData(allKeys){
     const levels = uniqSorted(rawRows.map(r => norm(r["Level"])));
     const zones = uniqSorted(rawRows.map(r => norm(r["Zone"])));
@@ -322,55 +491,80 @@
     const discs = uniqSorted(rawRows.map(r => norm(r["Discipline"])));
     const codes = uniqSorted(rawRows.map(r => norm(r["Curr. Code"])));
 
-    setSelectOptions(els.levelFilter, levels);
-    setSelectOptions(els.zoneFilter, zones);
-    setSelectOptions(els.statusVpFilter, statusVp);
-    setSelectOptions(els.disciplineFilter, discs);
-    setSelectOptions(els.currCodeFilter, codes);
+    els.levelFilter.innerHTML = `<option value="">All</option>` + levels.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
+    els.zoneFilter.innerHTML = `<option value="">All</option>` + zones.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
+    els.statusVpFilter.innerHTML = `<option value="">All</option>` + statusVp.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
+    els.disciplineFilter.innerHTML = `<option value="">All</option>` + discs.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
+    els.currCodeFilter.innerHTML = `<option value="">All</option>` + codes.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
+
+    // Apply URL filters after options exist
+    setFiltersToUI(readFiltersFromURL());
 
     const preferred = [
-      "S.N.", "Drawing No.", "Description", "Stage", "Building", "Discipline", "Sub-Discipline",
-      "Level", "Zone", "Part", "Sub_Part", "Status-SBG", "Status-VP",
-      "Curr. Code", "Curr. Code Date", "Curr. Code Rev", "Workflow No.", "Remarks"
+      "S.N.", "Drawing No.", "Description",
+      "Level", "Zone", "Discipline", "Sub-Discipline",
+      "Status-SBG", "Status-VP", "Curr. Code",
+      "AgingDays", "SLA",
+      "Curr. Code Date", "Workflow No.", "Remarks"
     ];
 
     const colsOrdered = preferred.filter(c => allKeys.includes(c))
       .concat(allKeys.filter(k => !preferred.includes(k)));
 
-    const tabCols = colsOrdered.map(c => ({
-      title: c,
-      field: c,
-      hozAlign: "left",
-      widthGrow: 2,
-      formatter: (cell) => {
-        const v = norm(cell.getValue());
-        if(!v) return "";
-        if(c === "Curr. Code"){
-          const cls = v === "C" ? "danger" : (v === "B" ? "warn" : (v === "QA" ? "ok" : ""));
-          return pill(v, cls);
+    const tabCols = colsOrdered.map(c => {
+      const col = {
+        title: c,
+        field: c,
+        hozAlign: "left",
+        headerFilter: false,
+        widthGrow: 2,
+        formatter: (cell) => {
+          const v = norm(cell.getValue());
+          if(!v) return "";
+          if(c === "Curr. Code"){
+            const cls = v === "C" ? "danger" : (v === "B" ? "warn" : (v === "QA" ? "ok" : ""));
+            return pill(v, cls);
+          }
+          if(c === "SLA"){
+            const cls = v.includes("30") ? "danger" : (v.includes("14") ? "warn" : (v.includes("7") ? "warn" : (v==="OK" ? "ok" : "muted")));
+            return pill(v, cls);
+          }
+          if(c === "AgingDays"){
+            const n = Number(v);
+            if(Number.isFinite(n)){
+              const cls = n > 30 ? "danger" : (n > 14 ? "warn" : (n > 7 ? "warn" : "ok"));
+              return pill(String(n), cls);
+            }
+          }
+          if(c === "Status-VP"){
+            const low = v.toLowerCase();
+            if(low.includes("not started")) return pill(v, "danger");
+            if(low.includes("on hold")) return pill(v, "warn");
+            return escapeHtml(v);
+          }
+          return escapeHtml(v);
         }
-        if(c === "Status-VP"){
-          const low = v.toLowerCase();
-          if(low.includes("not started")) return pill(v, "danger");
-          if(low.includes("on hold")) return pill(v, "warn");
-          if(v === "B") return pill("B", "warn");
-          if(v === "C") return pill("C", "danger");
-        }
-        return escapeHtml(v);
-      }
-    }));
+      };
 
-    // Destroy and recreate table every load to avoid "not initialized" + column mismatch bugs
+      // Freeze key columns
+      if(["S.N.","Drawing No.","Description"].includes(c)) col.frozen = true;
+
+      // Right-align numbers
+      if(c === "AgingDays") col.hozAlign = "right";
+
+      return col;
+    });
+
     if(table){
       table.destroy();
       table = null;
     }
 
     table = new Tabulator("#table", {
-      data: [],               // set after tableBuilt
+      data: [],
       columns: tabCols,
       layout: "fitDataStretch",
-      height: "520px",
+      height: "540px",
       pagination: true,
       paginationSize: 25,
       movableColumns: true,
@@ -378,27 +572,22 @@
       placeholder: "No data (check filters)…",
     });
 
-    // Guarantee setData happens only after Tabulator is ready
-    table.on("tableBuilt", () => {
-      updateTable();
-    });
+    table.on("tableBuilt", () => updateTable());
   }
 
-  // ---------- Filters ----------
+  // ---------------------------
+  // Apply filters + refresh
+  // ---------------------------
   function applyAll(){
-    const q = norm(els.searchBox.value).toLowerCase();
-    const fLevel = norm(els.levelFilter.value);
-    const fZone = norm(els.zoneFilter.value);
-    const fStatusVp = norm(els.statusVpFilter.value);
-    const fDisc = norm(els.disciplineFilter.value);
-    const fCode = norm(els.currCodeFilter.value);
+    const f = getFiltersFromUI();
+    const q = norm(f.q).toLowerCase();
 
     filteredRows = rawRows.filter(r => {
-      if(fLevel && norm(r["Level"]) !== fLevel) return false;
-      if(fZone && norm(r["Zone"]) !== fZone) return false;
-      if(fStatusVp && norm(r["Status-VP"]) !== fStatusVp) return false;
-      if(fDisc && norm(r["Discipline"]) !== fDisc) return false;
-      if(fCode && norm(r["Curr. Code"]) !== fCode) return false;
+      if(f.level && norm(r["Level"]) !== f.level) return false;
+      if(f.zone && norm(r["Zone"]) !== f.zone) return false;
+      if(f.statusVp && norm(r["Status-VP"]) !== f.statusVp) return false;
+      if(f.discipline && norm(r["Discipline"]) !== f.discipline) return false;
+      if(f.code && norm(r["Curr. Code"]) !== f.code) return false;
 
       if(q){
         const hay = [
@@ -414,14 +603,20 @@
     updateKPIs();
     updateCharts();
     updateHeatmap();
+    updateBottlenecks();
+    updateGroupBoard();
     updateTable();
+
+    renderActiveFilters();
+    writeFiltersToURL();
   }
 
-  // ---------- KPIs ----------
+  // ---------------------------
+  // KPIs
+  // ---------------------------
   function updateKPIs(){
     const rows = filteredRows;
     const total = rows.length;
-
     const withWF = rows.filter(r => norm(r["Workflow No."]) || norm(r["Workflow No. (01)"]) || norm(r["Workflow No. (02)"])).length;
     const codeB = rows.filter(r => norm(r["Curr. Code"]) === "B").length;
     const codeC = rows.filter(r => norm(r["Curr. Code"]) === "C").length;
@@ -434,19 +629,28 @@
     els.kpiNotStarted.textContent = notStarted.toLocaleString();
   }
 
-  // ---------- Charts ----------
-  function renderBarChart(chartRef, canvas, labels, data, title){
+  // ---------------------------
+  // Charts with click-to-filter
+  // ---------------------------
+  function renderBarChart(chartRef, canvas, labels, data, onClick){
     if(chartRef) chartRef.destroy();
-    return new Chart(canvas, {
+    const c = new Chart(canvas, {
       type: "bar",
-      data: { labels, datasets: [{ label: title, data }] },
+      data: { labels, datasets: [{ label: "", data }] },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
-        scales: { y: { beginAtZero: true } }
+        scales: { y: { beginAtZero: true } },
+        onClick: (evt, elements) => {
+          if(!elements || !elements.length) return;
+          const idx = elements[0].index;
+          const label = labels[idx];
+          onClick(label);
+        }
       }
     });
+    return c;
   }
 
   function updateCharts(){
@@ -455,15 +659,26 @@
     const topStatus = countBy(filteredRows, "Status-VP").slice(0,10);
     const topCode = countBy(filteredRows, "Curr. Code").slice(0,10);
 
-    chartStatus = renderBarChart(chartStatus, els.chartStatusCanvas,
-      topStatus.map(x => x[0]), topStatus.map(x => x[1]), "Status-VP"
+    chartStatus = renderBarChart(
+      chartStatus,
+      els.chartStatusCanvas,
+      topStatus.map(x => x[0]),
+      topStatus.map(x => x[1]),
+      (label) => { els.statusVpFilter.value = (label === "(blank)") ? "" : label; applyAll(); }
     );
-    chartCode = renderBarChart(chartCode, els.chartCodeCanvas,
-      topCode.map(x => x[0]), topCode.map(x => x[1]), "Curr. Code"
+
+    chartCode = renderBarChart(
+      chartCode,
+      els.chartCodeCanvas,
+      topCode.map(x => x[0]),
+      topCode.map(x => x[1]),
+      (label) => { els.currCodeFilter.value = (label === "(blank)") ? "" : label; applyAll(); }
     );
   }
 
-  // ---------- Heatmap ----------
+  // ---------------------------
+  // Heatmap with click-to-filter
+  // ---------------------------
   function updateHeatmap(){
     const rows = filteredRows;
     const levels = uniqSorted(rows.map(r => norm(r["Level"])));
@@ -493,28 +708,215 @@
       zones.forEach(Z => {
         const v = m[L][Z];
         const intensity = max ? Math.round((v / max) * 80) : 0;
-        html += `<td style="
-          text-align:center; padding:6px; border-bottom:1px solid #f1f5f9;
-          background: rgba(17,24,39, ${intensity/100});
-          color: ${intensity>40 ? "#fff" : "#111"};
-          border-radius:8px;">
+
+        // clickable cell
+        html += `<td
+          data-level="${escapeHtml(L)}"
+          data-zone="${escapeHtml(Z)}"
+          style="
+            cursor:pointer;
+            text-align:center; padding:6px; border-bottom:1px solid #f1f5f9;
+            background: rgba(17,24,39, ${intensity/100});
+            color: ${intensity>40 ? "#fff" : "#111"};
+            border-radius:8px;">
           ${v}
         </td>`;
       });
       html += `</tr>`;
     });
+
     html += `</table></div>`;
     els.heatmap.innerHTML = html;
+
+    // attach click handlers
+    els.heatmap.querySelectorAll("td[data-level]").forEach(td => {
+      td.addEventListener("click", () => {
+        els.levelFilter.value = td.getAttribute("data-level") || "";
+        els.zoneFilter.value = td.getAttribute("data-zone") || "";
+        applyAll();
+      });
+    });
   }
 
-  // ---------- Table ----------
+  // ---------------------------
+  // Bottlenecks (Top 20 oldest needing follow-up)
+  // ---------------------------
+  function updateBottlenecks(){
+    const now = new Date();
+
+    const enriched = filteredRows.map(r => {
+      const last = getBestTouchDate(r);
+      const age = last ? daysBetween(last.date, now) : null;
+      return { r, last, age };
+    });
+
+    // Candidate rules: anything likely not finished
+    const candidates = enriched.filter(x => {
+      const st = norm(x.r["Status-VP"]).toLowerCase();
+      const code = norm(x.r["Curr. Code"]);
+      if(!code) return true;
+      if(code === "C") return true;
+      if(st.includes("consultant") || st.includes("review") || st.includes("on hold") || st.includes("not started")) return true;
+      return false;
+    });
+
+    candidates.sort((a,b) => (b.age ?? -1) - (a.age ?? -1));
+    const top = candidates.slice(0, 20);
+
+    if(!top.length){
+      els.bottlenecks.innerHTML = `<div class="small">No bottlenecks found (with current filters).</div>`;
+      return;
+    }
+
+    els.bottlenecks.innerHTML = top.map(x => {
+      const dn = norm(x.r["Drawing No."]) || "(no drawing)";
+      const desc = norm(x.r["Description"]) || "";
+      const L = norm(x.r["Level"]) || "-";
+      const Z = norm(x.r["Zone"]) || "-";
+      const st = norm(x.r["Status-VP"]) || "(blank)";
+      const code = norm(x.r["Curr. Code"]) || "(blank)";
+      const wf = norm(x.r["Workflow No."]) || norm(x.r["Workflow No. (01)"]) || norm(x.r["Workflow No. (02)"]) || "";
+
+      const ageText = (x.age === null)
+        ? pill("Unknown", "warn")
+        : pill(`${x.age}d`, x.age > 30 ? "danger" : (x.age > 14 ? "warn" : (x.age > 7 ? "warn" : "ok")));
+
+      const src = x.last ? `${x.last.source}=${x.last.date.toISOString().slice(0,10)}` : "No date found";
+
+      return `
+        <div class="bItem">
+          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+            ${ageText}
+            ${pill(`L:${L}`, "muted")}
+            ${pill(`Z:${Z}`, "muted")}
+            ${pill(`Code:${code}`, code==="C"?"danger":(code==="B"?"warn":"muted"))}
+            ${pill(`${st}`, st.toLowerCase().includes("not started")?"danger":(st.toLowerCase().includes("on hold")?"warn":"muted"))}
+          </div>
+          <div class="bTitle mono" style="margin-top:8px;">${escapeHtml(dn)}</div>
+          <div class="bDesc">${escapeHtml(desc)}</div>
+          <div class="bMeta">Last touch: <span class="mono">${escapeHtml(src)}</span>${wf ? ` • WF: <span class="mono">${escapeHtml(wf)}</span>` : ""}</div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  // ---------------------------
+  // Group Board (worst-first)
+  // ---------------------------
+  function updateGroupBoard(){
+    const now = new Date();
+    const map = new Map();
+
+    function keyOf(r){
+      return [
+        norm(r["Level"])||"-",
+        norm(r["Zone"])||"-",
+        norm(r["Discipline"])||"-",
+        norm(r["Sub-Discipline"])||"-"
+      ].join(" | ");
+    }
+
+    filteredRows.forEach(r => {
+      const k = keyOf(r);
+      const code = norm(r["Curr. Code"]);
+      const st = norm(r["Status-VP"]).toLowerCase();
+
+      const last = getBestTouchDate(r);
+      const age = last ? daysBetween(last.date, now) : null;
+
+      if(!map.has(k)){
+        map.set(k, {
+          group: k,
+          level: norm(r["Level"])||"-",
+          zone: norm(r["Zone"])||"-",
+          discipline: norm(r["Discipline"])||"-",
+          subDiscipline: norm(r["Sub-Discipline"])||"-",
+          total: 0,
+          codeC: 0,
+          notStarted: 0,
+          onHold: 0,
+          oldest: null,
+          avgAgeSum: 0,
+          avgAgeCnt: 0,
+        });
+      }
+      const g = map.get(k);
+      g.total += 1;
+      if(code === "C") g.codeC += 1;
+      if(st.includes("not started")) g.notStarted += 1;
+      if(st.includes("on hold")) g.onHold += 1;
+
+      if(age !== null){
+        g.oldest = (g.oldest === null) ? age : Math.max(g.oldest, age);
+        g.avgAgeSum += age;
+        g.avgAgeCnt += 1;
+      }
+    });
+
+    const groups = [...map.values()].map(g => {
+      const avg = g.avgAgeCnt ? Math.round(g.avgAgeSum / g.avgAgeCnt) : "";
+      // scoring: prioritize Code C, then not started, then oldest
+      const score = (g.codeC * 1000) + (g.notStarted * 400) + (g.onHold * 200) + (g.oldest || 0);
+      return { ...g, avgAge: avg, score };
+    });
+
+    groups.sort((a,b) => b.score - a.score);
+
+    // store for export
+    window.__groupsForExport = groups;
+
+    if(!groups.length){
+      els.groupBoard.innerHTML = `<div class="small">No groups (current filters empty).</div>`;
+      return;
+    }
+
+    // simple HTML table
+    let html = `<div style="overflow:auto"><table style="border-collapse:collapse; width:100%; font-size:12px">`;
+    html += `<tr>
+      <th style="text-align:left; padding:6px; border-bottom:1px solid #e5e7eb">Group</th>
+      <th style="text-align:center; padding:6px; border-bottom:1px solid #e5e7eb">Total</th>
+      <th style="text-align:center; padding:6px; border-bottom:1px solid #e5e7eb">Code C</th>
+      <th style="text-align:center; padding:6px; border-bottom:1px solid #e5e7eb">Not Started</th>
+      <th style="text-align:center; padding:6px; border-bottom:1px solid #e5e7eb">On Hold</th>
+      <th style="text-align:center; padding:6px; border-bottom:1px solid #e5e7eb">Oldest(d)</th>
+      <th style="text-align:center; padding:6px; border-bottom:1px solid #e5e7eb">Avg(d)</th>
+    </tr>`;
+
+    groups.slice(0, 25).forEach(g => {
+      const oldest = g.oldest === null ? "" : g.oldest;
+      const oldestCls = (oldest > 30) ? "danger" : (oldest > 14 ? "warn" : (oldest > 7 ? "warn" : "ok"));
+      const codeCls = g.codeC ? "danger" : "ok";
+      const nsCls = g.notStarted ? "warn" : "ok";
+      const ohCls = g.onHold ? "warn" : "ok";
+
+      html += `<tr>
+        <td style="padding:6px; border-bottom:1px solid #f1f5f9">
+          <span class="mono">${escapeHtml(g.group)}</span>
+        </td>
+        <td style="text-align:center; padding:6px; border-bottom:1px solid #f1f5f9">${g.total}</td>
+        <td style="text-align:center; padding:6px; border-bottom:1px solid #f1f5f9">${pill(String(g.codeC), codeCls)}</td>
+        <td style="text-align:center; padding:6px; border-bottom:1px solid #f1f5f9">${pill(String(g.notStarted), nsCls)}</td>
+        <td style="text-align:center; padding:6px; border-bottom:1px solid #f1f5f9">${pill(String(g.onHold), ohCls)}</td>
+        <td style="text-align:center; padding:6px; border-bottom:1px solid #f1f5f9">${oldest === "" ? "" : pill(String(oldest), oldestCls)}</td>
+        <td style="text-align:center; padding:6px; border-bottom:1px solid #f1f5f9">${g.avgAge === "" ? "" : pill(String(g.avgAge), "muted")}</td>
+      </tr>`;
+    });
+
+    html += `</table></div>`;
+    els.groupBoard.innerHTML = html;
+  }
+
+  // ---------------------------
+  // Table update
+  // ---------------------------
   function updateTable(){
     if(!table) return;
-    // If table not built yet, tableBuilt handler will call updateTable again.
-    try { table.setData(filteredRows); } catch(e) { console.warn("setData skipped:", e); }
+    try { table.setData(filteredRows); } catch(e) { /* tableBuilt will retry */ }
   }
 
-  // ---------- Export filtered ----------
+  // ---------------------------
+  // Export helpers
+  // ---------------------------
   function csvEscape(v){
     const s = (v === null || v === undefined) ? "" : String(v);
     if(/[",\n]/.test(s)) return `"${s.replaceAll('"', '""')}"`;
@@ -533,7 +935,6 @@
 
     const blob = new Blob([lines.join("\n")], {type: "text/csv;charset=utf-8"});
     const url = URL.createObjectURL(blob);
-
     const a = document.createElement("a");
     a.href = url;
     a.download = "filtered_shopdrawings.csv";
@@ -543,7 +944,31 @@
     URL.revokeObjectURL(url);
   }
 
-  // ---------- Events ----------
+  function exportGroupBoardCsv(){
+    const groups = window.__groupsForExport || [];
+    if(!groups.length){
+      alert("No group data to export.");
+      return;
+    }
+    const cols = ["level","zone","discipline","subDiscipline","total","codeC","notStarted","onHold","oldest","avgAge","score","group"];
+    const lines = [];
+    lines.push(cols.map(csvEscape).join(","));
+    groups.forEach(g => lines.push(cols.map(c => csvEscape(g[c])).join(",")));
+
+    const blob = new Blob([lines.join("\n")], {type: "text/csv;charset=utf-8"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "group_board.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  // ---------------------------
+  // Events
+  // ---------------------------
   els.fileInput.addEventListener("change", (e) => {
     const f = e.target.files?.[0];
     if(!f) return;
@@ -572,14 +997,19 @@
   });
 
   els.exportBtn.addEventListener("click", exportFilteredCsv);
+  els.exportGroupsBtn.addEventListener("click", exportGroupBoardCsv);
+  els.copyLinkBtn.addEventListener("click", copyShareLink);
 
-  // ---------- Boot (auto-load last csv if storage is allowed) ----------
+  // ---------------------------
+  // Boot: auto-load last CSV if allowed
+  // ---------------------------
   (function boot(){
+    renderActiveFilters();
     try {
       const last = localStorage.getItem(LS_KEY);
       if(last && last.length > 100) loadCsvText(last);
     } catch (e) {
-      console.warn("Storage blocked by browser privacy settings. Auto-load disabled.");
+      // ignore storage blocks
     }
   })();
 </script>
