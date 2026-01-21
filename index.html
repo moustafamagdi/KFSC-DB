@@ -57,14 +57,14 @@
 <body>
 <header>
   <h1>Shop Drawings & Model Log — Interactive Dashboard</h1>
-  <div class="sub">Upload your CSV anytime to refresh analytics • Filters + Charts + Bottleneck Finder • Works offline (CDNs required)</div>
+  <div class="sub">Upload your CSV anytime to refresh analytics • Filters + Charts + Table • Header auto-detect for your export format</div>
 </header>
 
 <div class="wrap">
   <div class="card">
     <div class="controls">
       <div class="ctrl">
-        <label>Upload CSV (recommended)</label>
+        <label>Upload CSV</label>
         <input id="fileInput" type="file" accept=".csv" />
       </div>
 
@@ -104,7 +104,7 @@
           <button id="resetBtn" class="secondary" type="button">Reset Filters</button>
           <button id="exportBtn" type="button">Export Filtered CSV</button>
         </div>
-        <div class="hint">Tip: the dashboard saves last loaded CSV in your browser.</div>
+        <div class="hint">If Edge blocks storage, auto-load is disabled (no impact on loading CSV).</div>
       </div>
     </div>
   </div>
@@ -119,45 +119,25 @@
       <div class="kpi"><div class="val" id="kpiCodeB">—</div><div class="lbl">Curr. Code = B</div></div>
       <div class="kpi"><div class="val" id="kpiCodeC">—</div><div class="lbl">Curr. Code = C</div></div>
       <div class="kpi"><div class="val" id="kpiNotStarted">—</div><div class="lbl">Status-VP contains "Not Started"</div></div>
-      <div class="footer small">These KPIs are based on current filters.</div>
+      <div class="footer small">KPIs are based on current filters.</div>
     </div>
 
     <div class="card">
       <h2>Distribution — Status-VP</h2>
       <canvas id="chartStatus"></canvas>
-      <div class="small">Shows the biggest buckets only (top 10).</div>
+      <div class="small">Top 10 only.</div>
     </div>
 
     <div class="card">
       <h2>Distribution — Current Code</h2>
       <canvas id="chartCode"></canvas>
-      <div class="small">Useful to see B/C/QA/… after applying filters.</div>
+      <div class="small">Top 10 only.</div>
     </div>
 
     <div class="card">
-      <h2>Heatmap Idea — Level × Zone</h2>
-      <div id="heatmap" class="small">Load data to render…</div>
-      <div class="footer small">This is the fastest way to spot where the workload is concentrated.</div>
-    </div>
-  </div>
-
-  <div style="height:12px"></div>
-
-  <div class="row cols-2">
-    <div class="card">
-      <h2>Bottleneck Finder (Top 20)</h2>
-      <div class="small">We estimate “age” by days since the most recent available date in these columns (if present):</div>
-      <div class="small mono" style="margin:6px 0 10px;">
-        Curr. Code Date → Consult. Rep (02) → Consult. Rep (01) → Consult. Rep (00) → Consult. Sub (02) → Consult. Sub (01) → Consult. Sub (00) → SBG Approval → SBG Sub
-      </div>
-      <div id="bottlenecks"></div>
-      <div class="footer small">If dates are missing, the item is treated as unknown age.</div>
-    </div>
-
-    <div class="card">
-      <h2>Data Quality Alerts</h2>
-      <div id="alerts"></div>
-      <div class="footer small">This helps you catch items that can break submissions (missing workflow, missing rev, etc.).</div>
+      <h2>Heatmap — Level × Zone</h2>
+      <div id="heatmap" class="small">Upload CSV to render…</div>
+      <div class="footer small">Fast way to spot workload concentration.</div>
     </div>
   </div>
 
@@ -168,6 +148,7 @@
     <div class="small">Search, filter, sort, group, and export the filtered rows.</div>
     <div style="height:10px"></div>
     <div id="table"></div>
+    <div class="footer small" id="loadInfo"></div>
   </div>
 </div>
 
@@ -178,7 +159,7 @@
 
 <script>
   // ---------- Helpers ----------
-  const LS_KEY = "shopdrawings_last_csv_text_v1";
+  const LS_KEY = "shopdrawings_last_csv_text_v2";
 
   function norm(v){
     if(v === null || v === undefined) return "";
@@ -187,18 +168,13 @@
     return s;
   }
 
-  function parseDateSafe(v){
-    const s = norm(v);
-    if(!s) return null;
-    // expected formats like 2026-01-19
-    const d = new Date(s);
-    if(!isNaN(d.getTime())) return d;
-    return null;
-  }
-
-  function daysBetween(d1, d2){
-    const ms = d2.getTime() - d1.getTime();
-    return Math.floor(ms / (1000*60*60*24));
+  function escapeHtml(str){
+    return String(str)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
   }
 
   function uniqSorted(arr){
@@ -217,18 +193,7 @@
   function setSelectOptions(selectEl, values){
     const current = selectEl.value;
     selectEl.innerHTML = `<option value="">All</option>` + values.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
-    // try keep selection if still exists
-    const exists = values.includes(current);
-    selectEl.value = exists ? current : "";
-  }
-
-  function escapeHtml(str){
-    return String(str)
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#039;");
+    selectEl.value = values.includes(current) ? current : "";
   }
 
   function pill(text, cls){
@@ -239,7 +204,6 @@
   let rawRows = [];
   let filteredRows = [];
   let table = null;
-
   let chartStatus = null;
   let chartCode = null;
 
@@ -253,6 +217,7 @@
     currCodeFilter: document.getElementById("currCodeFilter"),
     resetBtn: document.getElementById("resetBtn"),
     exportBtn: document.getElementById("exportBtn"),
+    loadInfo: document.getElementById("loadInfo"),
 
     kpiTotal: document.getElementById("kpiTotal"),
     kpiSubmitted: document.getElementById("kpiSubmitted"),
@@ -261,40 +226,162 @@
     kpiNotStarted: document.getElementById("kpiNotStarted"),
 
     heatmap: document.getElementById("heatmap"),
-    bottlenecks: document.getElementById("bottlenecks"),
-    alerts: document.getElementById("alerts"),
-
     chartStatusCanvas: document.getElementById("chartStatus"),
     chartCodeCanvas: document.getElementById("chartCode"),
   };
+
+  // ---------- Header auto-detect for your export ----------
+  function detectHeaderRow(lines){
+    const mustHave = ["S.N.", "Drawing No.", "Description"];
+    const shouldHave = ["Level", "Zone", "Discipline", "Status-VP", "Curr. Code", "Workflow No."];
+
+    for(let i=0; i<Math.min(lines.length, 120); i++){
+      const line = lines[i] || "";
+      const mustHits = mustHave.filter(h => line.includes(h)).length;
+      const shouldHits = shouldHave.filter(h => line.includes(h)).length;
+      if(mustHits === mustHave.length && shouldHits >= 2){
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  function makeHeadersUnique(fields){
+    const seen = new Map();
+    return (fields || []).map((f, idx) => {
+      const base = norm(f) || `Unnamed_${idx}`;
+      const key = base.toLowerCase();
+      const n = (seen.get(key) || 0) + 1;
+      seen.set(key, n);
+      return n === 1 ? base : `${base} (${n})`;
+    });
+  }
+
+  function normalizeRowKeys(row){
+    const out = {};
+    Object.keys(row).forEach(k => {
+      const nk = (k || "").trim();
+      out[nk] = row[k];
+    });
+    return out;
+  }
 
   // ---------- Load CSV ----------
   function loadCsvText(csvText){
     try { localStorage.setItem(LS_KEY, csvText); } catch(e) {}
 
+    const lines = csvText.split(/\r?\n/);
+    const headerIndex = detectHeaderRow(lines);
 
-    Papa.parse(csvText, {
+    if(headerIndex === -1){
+      alert("Header row not found. Your CSV export contains pre-header lines; please ensure it includes 'S.N., Drawing No., Description, ...'");
+      console.log("First 30 lines:", lines.slice(0,30));
+      return;
+    }
+
+    const cleanCsv = lines.slice(headerIndex).join("\n");
+    console.log("Detected header row at line:", headerIndex + 1);
+
+    Papa.parse(cleanCsv, {
       header: true,
       skipEmptyLines: true,
       dynamicTyping: false,
       complete: (results) => {
-        rawRows = (results.data || []).map(r => normalizeRow(r)).filter(r => Object.keys(r).length > 0);
-        // drop obvious title rows if present
-        rawRows = rawRows.filter(r => norm(r["Drawing No."]) || norm(r["S.N."]));
-        initUIFromData();
+        const rawFields = results.meta?.fields || [];
+        const uniqueFields = makeHeadersUnique(rawFields);
+
+        // Re-map rows to unique field names (Papa uses raw fields as keys)
+        rawRows = (results.data || []).map(r => {
+          const out = {};
+          rawFields.forEach((f, i) => out[uniqueFields[i]] = r[f]);
+          return normalizeRowKeys(out);
+        });
+
+        // Filter out completely empty rows (export has blank separators)
+        rawRows = rawRows.filter(r => Object.values(r).some(v => norm(v)));
+
+        // Build UI + table AFTER data exists (avoid Tabulator init crash)
+        buildUIFromData(uniqueFields);
         applyAll();
+
+        els.loadInfo.innerHTML =
+          `Loaded <b>${rawRows.length.toLocaleString()}</b> rows • Header detected at line <b>${headerIndex+1}</b>.`;
       },
       error: (err) => {
         alert("CSV parse error: " + err);
+        console.error(err);
       }
     });
   }
 
-  function normalizeRow(r){
-    // make sure keys are exactly as in CSV
-    const out = {};
-    Object.keys(r).forEach(k => out[k.trim()] = r[k]);
-    return out;
+  // ---------- Build UI (and rebuild table safely) ----------
+  function buildUIFromData(allKeys){
+    const levels = uniqSorted(rawRows.map(r => norm(r["Level"])));
+    const zones = uniqSorted(rawRows.map(r => norm(r["Zone"])));
+    const statusVp = uniqSorted(rawRows.map(r => norm(r["Status-VP"])));
+    const discs = uniqSorted(rawRows.map(r => norm(r["Discipline"])));
+    const codes = uniqSorted(rawRows.map(r => norm(r["Curr. Code"])));
+
+    setSelectOptions(els.levelFilter, levels);
+    setSelectOptions(els.zoneFilter, zones);
+    setSelectOptions(els.statusVpFilter, statusVp);
+    setSelectOptions(els.disciplineFilter, discs);
+    setSelectOptions(els.currCodeFilter, codes);
+
+    const preferred = [
+      "S.N.", "Drawing No.", "Description", "Stage", "Building", "Discipline", "Sub-Discipline",
+      "Level", "Zone", "Part", "Sub_Part", "Status-SBG", "Status-VP",
+      "Curr. Code", "Curr. Code Date", "Curr. Code Rev", "Workflow No.", "Remarks"
+    ];
+
+    const colsOrdered = preferred.filter(c => allKeys.includes(c))
+      .concat(allKeys.filter(k => !preferred.includes(k)));
+
+    const tabCols = colsOrdered.map(c => ({
+      title: c,
+      field: c,
+      hozAlign: "left",
+      widthGrow: 2,
+      formatter: (cell) => {
+        const v = norm(cell.getValue());
+        if(!v) return "";
+        if(c === "Curr. Code"){
+          const cls = v === "C" ? "danger" : (v === "B" ? "warn" : (v === "QA" ? "ok" : ""));
+          return pill(v, cls);
+        }
+        if(c === "Status-VP"){
+          const low = v.toLowerCase();
+          if(low.includes("not started")) return pill(v, "danger");
+          if(low.includes("on hold")) return pill(v, "warn");
+          if(v === "B") return pill("B", "warn");
+          if(v === "C") return pill("C", "danger");
+        }
+        return escapeHtml(v);
+      }
+    }));
+
+    // Destroy and recreate table every load to avoid "not initialized" + column mismatch bugs
+    if(table){
+      table.destroy();
+      table = null;
+    }
+
+    table = new Tabulator("#table", {
+      data: [],               // set after tableBuilt
+      columns: tabCols,
+      layout: "fitDataStretch",
+      height: "520px",
+      pagination: true,
+      paginationSize: 25,
+      movableColumns: true,
+      resizableColumnFit: true,
+      placeholder: "No data (check filters)…",
+    });
+
+    // Guarantee setData happens only after Tabulator is ready
+    table.on("tableBuilt", () => {
+      updateTable();
+    });
   }
 
   // ---------- Filters ----------
@@ -327,75 +414,7 @@
     updateKPIs();
     updateCharts();
     updateHeatmap();
-    updateBottlenecks();
-    updateAlerts();
     updateTable();
-  }
-
-  // ---------- UI init ----------
-  function initUIFromData(){
-    const levels = uniqSorted(rawRows.map(r => norm(r["Level"])));
-    const zones = uniqSorted(rawRows.map(r => norm(r["Zone"])));
-    const statusVp = uniqSorted(rawRows.map(r => norm(r["Status-VP"])));
-    const discs = uniqSorted(rawRows.map(r => norm(r["Discipline"])));
-    const codes = uniqSorted(rawRows.map(r => norm(r["Curr. Code"])));
-
-    setSelectOptions(els.levelFilter, levels);
-    setSelectOptions(els.zoneFilter, zones);
-    setSelectOptions(els.statusVpFilter, statusVp);
-    setSelectOptions(els.disciplineFilter, discs);
-    setSelectOptions(els.currCodeFilter, codes);
-
-    if(!table){
-      const preferredCols = [
-        "S.N.", "Drawing No.", "Description", "Stage", "Building", "Discipline", "Sub-Discipline",
-        "Level", "Zone", "Part", "Sub_Part",
-        "Status-VP", "Status-SBG", "Curr. Code", "Curr. Code Date", "Curr. Code Rev",
-        "Workflow No.", "Remarks",
-        "Workflow No. (01)", "Status (01)", "Code (01)",
-        "Workflow No. (02)", "Status (02)", "Code (02)",
-      ];
-
-      const allKeys = Object.keys(rawRows[0] || {});
-      const cols = preferredCols.filter(c => allKeys.includes(c))
-        .concat(allKeys.filter(k => !preferredCols.includes(k)));
-
-      const tabCols = cols.map(c => ({
-        title: c,
-        field: c,
-        headerFilter: false,
-        hozAlign: "left",
-        widthGrow: 2,
-        formatter: (cell) => {
-          const v = norm(cell.getValue());
-          if(!v) return "";
-          if(c === "Curr. Code"){
-            const cls = v === "C" ? "danger" : (v === "B" ? "warn" : (v === "QA" ? "ok" : ""));
-            return pill(v, cls);
-          }
-          if(c === "Status-VP"){
-            if(v.includes("Not Started")) return pill(v, "danger");
-            if(v.includes("On Hold")) return pill(v, "warn");
-            if(v === "B") return pill("B", "warn");
-            if(v === "C") return pill("C", "danger");
-            return escapeHtml(v);
-          }
-          return escapeHtml(v);
-        }
-      }));
-
-      table = new Tabulator("#table", {
-        data: [],
-        columns: tabCols,
-        layout: "fitDataStretch",
-        height: "520px",
-        pagination: true,
-        paginationSize: 25,
-        movableColumns: true,
-        resizableColumnFit: true,
-        placeholder: "Upload CSV to see data…",
-      });
-    }
   }
 
   // ---------- KPIs ----------
@@ -420,26 +439,19 @@
     if(chartRef) chartRef.destroy();
     return new Chart(canvas, {
       type: "bar",
-      data: {
-        labels,
-        datasets: [{ label: title, data }]
-      },
+      data: { labels, datasets: [{ label: title, data }] },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: { enabled: true },
-        },
-        scales: {
-          x: { ticks: { autoSkip: false, maxRotation: 60, minRotation: 0 } },
-          y: { beginAtZero: true }
-        }
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true } }
       }
     });
   }
 
   function updateCharts(){
+    if(!filteredRows.length) return;
+
     const topStatus = countBy(filteredRows, "Status-VP").slice(0,10);
     const topCode = countBy(filteredRows, "Curr. Code").slice(0,10);
 
@@ -451,7 +463,7 @@
     );
   }
 
-  // ---------- Heatmap (Level × Zone) ----------
+  // ---------- Heatmap ----------
   function updateHeatmap(){
     const rows = filteredRows;
     const levels = uniqSorted(rows.map(r => norm(r["Level"])));
@@ -462,7 +474,6 @@
       return;
     }
 
-    // matrix counts
     const m = {};
     levels.forEach(L => { m[L] = {}; zones.forEach(Z => m[L][Z] = 0); });
     rows.forEach(r => {
@@ -481,7 +492,7 @@
       html += `<tr><td style="padding:6px; border-bottom:1px solid #f1f5f9"><b>${escapeHtml(L)}</b></td>`;
       zones.forEach(Z => {
         const v = m[L][Z];
-        const intensity = max ? Math.round((v / max) * 80) : 0; // 0..80
+        const intensity = max ? Math.round((v / max) * 80) : 0;
         html += `<td style="
           text-align:center; padding:6px; border-bottom:1px solid #f1f5f9;
           background: rgba(17,24,39, ${intensity/100});
@@ -493,131 +504,23 @@
       html += `</tr>`;
     });
     html += `</table></div>`;
-
     els.heatmap.innerHTML = html;
-  }
-
-  // ---------- Bottlenecks ----------
-  function getLastTouchDate(row){
-    const priorityCols = [
-      "Curr. Code Date",
-      "Consult. Rep (02)", "Consult. Rep (01)", "Consult. Rep (00)",
-      "Consult. Sub (02)", "Consult. Sub (01)", "Consult. Sub (00)",
-      "SBG Approval (0)", "SBG Approval (01)", "SBG Approval (02)",
-      "SBG Sub (02)", "SBG Sub (01)", "SBG Sub (00)",
-      "1-100 Sub.", "1-50 Sub."
-    ];
-
-    for(const c of priorityCols){
-      if(row[c] !== undefined){
-        const d = parseDateSafe(row[c]);
-        if(d) return { date: d, col: c };
-      }
-    }
-    return null;
-  }
-
-  function updateBottlenecks(){
-    const now = new Date();
-    const enriched = filteredRows.map(r => {
-      const last = getLastTouchDate(r);
-      const age = last ? daysBetween(last.date, now) : null;
-      return { r, last, age };
-    });
-
-    // focus on items that are not clearly finished (you can adjust rules)
-    const candidates = enriched
-      .filter(x => {
-        const st = norm(x.r["Status-VP"]).toLowerCase();
-        // keep anything that is not started / on hold / under review / review buckets / or missing code
-        if(!norm(x.r["Curr. Code"])) return true;
-        if(st.includes("not started") || st.includes("on hold") || st.includes("review") || st.includes("u/r")) return true;
-        if(norm(x.r["Curr. Code"]) === "C") return true;
-        return false;
-      })
-      .sort((a,b) => (b.age ?? -1) - (a.age ?? -1))
-      .slice(0, 20);
-
-    if(candidates.length === 0){
-      els.bottlenecks.innerHTML = `<div class="small">No bottlenecks found with current filters.</div>`;
-      return;
-    }
-
-    let html = `<div style="display:grid; gap:10px;">`;
-    candidates.forEach(x => {
-      const dn = norm(x.r["Drawing No."]) || "(no drawing no)";
-      const desc = norm(x.r["Description"]);
-      const level = norm(x.r["Level"]);
-      const zone = norm(x.r["Zone"]);
-      const st = norm(x.r["Status-VP"]) || "(blank)";
-      const code = norm(x.r["Curr. Code"]) || "(blank)";
-      const wf = norm(x.r["Workflow No."]) || norm(x.r["Workflow No. (01)"]) || norm(x.r["Workflow No. (02)"]) || "";
-
-      const ageText = x.age === null ? pill("Unknown age", "warn") : pill(`${x.age} days`, x.age > 30 ? "danger" : (x.age > 14 ? "warn" : "ok"));
-      const lastText = x.last ? `<span class="small">Last date: <span class="mono">${escapeHtml(x.last.col)}</span> = <span class="mono">${escapeHtml(x.last.date.toISOString().slice(0,10))}</span></span>` : `<span class="small">Last date: (none)</span>`;
-
-      html += `
-        <div style="padding:10px; border:1px solid #eef2f7; border-radius:12px;">
-          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:6px;">
-            ${ageText}
-            ${pill(`L:${level || "-"}`, "")}
-            ${pill(`Z:${zone || "-"}`, "")}
-            ${pill(`Code:${code}`, code==="C"?"danger":(code==="B"?"warn":""))}
-            ${pill(`Status:${st}`, st.toLowerCase().includes("not started")?"danger":(st.toLowerCase().includes("on hold")?"warn":""))}
-          </div>
-          <div class="mono" style="font-size:12px; font-weight:700; margin-bottom:4px;">${escapeHtml(dn)}</div>
-          <div class="small" style="margin-bottom:6px;">${escapeHtml(desc)}</div>
-          <div class="small">${lastText}${wf ? ` • Workflow: <span class="mono">${escapeHtml(wf)}</span>` : ""}</div>
-        </div>
-      `;
-    });
-    html += `</div>`;
-    els.bottlenecks.innerHTML = html;
-  }
-
-  // ---------- Alerts ----------
-  function updateAlerts(){
-    const rows = filteredRows;
-
-    const missingWorkflow = rows.filter(r => {
-      const st = norm(r["Status-VP"]).toLowerCase();
-      const hasWF = norm(r["Workflow No."]) || norm(r["Workflow No. (01)"]) || norm(r["Workflow No. (02)"]);
-      // if it is in review/submitted but no workflow
-      if((st.includes("review") || st.includes("u/r") || norm(r["Curr. Code"])) && !hasWF) return true;
-      return false;
-    }).length;
-
-    const missingLevelZone = rows.filter(r => !norm(r["Level"]) || !norm(r["Zone"])).length;
-    const missingCurrCode = rows.filter(r => !norm(r["Curr. Code"]) || norm(r["Curr. Code"]) === "-").length;
-    const codeCNoRemarks = rows.filter(r => norm(r["Curr. Code"]) === "C" && !norm(r["Remarks"]) && !norm(r["Remarks (00)"]) && !norm(r["Remarks (01)"]) && !norm(r["Remarks (02)"])).length;
-
-    const alerts = [
-      { name: "Likely submitted/reviewed but missing Workflow No.", val: missingWorkflow, cls: missingWorkflow ? "danger" : "ok" },
-      { name: "Missing Level or Zone", val: missingLevelZone, cls: missingLevelZone ? "warn" : "ok" },
-      { name: "Missing / '-' Curr. Code", val: missingCurrCode, cls: missingCurrCode ? "warn" : "ok" },
-      { name: "Curr. Code = C but no remarks found", val: codeCNoRemarks, cls: codeCNoRemarks ? "danger" : "ok" },
-    ];
-
-    let html = `<div style="display:grid; gap:10px;">`;
-    alerts.forEach(a => {
-      html += `
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:10px; border:1px solid #eef2f7; border-radius:12px;">
-          <div class="small">${escapeHtml(a.name)}</div>
-          <div>${pill(a.val.toLocaleString(), a.cls)}</div>
-        </div>
-      `;
-    });
-    html += `</div>`;
-    els.alerts.innerHTML = html;
   }
 
   // ---------- Table ----------
   function updateTable(){
     if(!table) return;
-    table.setData(filteredRows);
+    // If table not built yet, tableBuilt handler will call updateTable again.
+    try { table.setData(filteredRows); } catch(e) { console.warn("setData skipped:", e); }
   }
 
   // ---------- Export filtered ----------
+  function csvEscape(v){
+    const s = (v === null || v === undefined) ? "" : String(v);
+    if(/[",\n]/.test(s)) return `"${s.replaceAll('"', '""')}"`;
+    return s;
+  }
+
   function exportFilteredCsv(){
     if(filteredRows.length === 0){
       alert("No rows to export (filters removed everything).");
@@ -626,9 +529,8 @@
     const cols = Object.keys(filteredRows[0]);
     const lines = [];
     lines.push(cols.map(csvEscape).join(","));
-    filteredRows.forEach(r => {
-      lines.push(cols.map(c => csvEscape(r[c])).join(","));
-    });
+    filteredRows.forEach(r => lines.push(cols.map(c => csvEscape(r[c])).join(",")));
+
     const blob = new Blob([lines.join("\n")], {type: "text/csv;charset=utf-8"});
     const url = URL.createObjectURL(blob);
 
@@ -639,12 +541,6 @@
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-  }
-
-  function csvEscape(v){
-    const s = (v === null || v === undefined) ? "" : String(v);
-    if(/[",\n]/.test(s)) return `"${s.replaceAll('"', '""')}"`;
-    return s;
   }
 
   // ---------- Events ----------
@@ -677,22 +573,15 @@
 
   els.exportBtn.addEventListener("click", exportFilteredCsv);
 
-  // ---------- Auto load last CSV ----------
+  // ---------- Boot (auto-load last csv if storage is allowed) ----------
   (function boot(){
-  // Don't build Tabulator before we know the columns.
-  // Just wait for user upload (more stable).
-  try {
-    const last = localStorage.getItem(LS_KEY);
-    if(last && last.length > 50){
-      loadCsvText(last);
+    try {
+      const last = localStorage.getItem(LS_KEY);
+      if(last && last.length > 100) loadCsvText(last);
+    } catch (e) {
+      console.warn("Storage blocked by browser privacy settings. Auto-load disabled.");
     }
-  } catch (e) {
-    // Storage may be blocked by Edge Tracking Prevention (safe to ignore)
-    console.warn("Storage blocked (Edge Tracking Prevention). Auto-load disabled.");
-  }
-})();
-
-
+  })();
 </script>
 </body>
 </html>
