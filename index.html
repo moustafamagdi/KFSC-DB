@@ -519,12 +519,19 @@
           return;
         }
 
+
         lastHeaderLine = headerIndex + 1;
         const cleanRows = rows.slice(headerIndex);
         const rawFields = cleanRows[0] || [];
         const uniqueFields = makeHeadersUnique(rawFields);
 
-        rawRows = cleanRows.slice(1).map(row => {
+        // Skip blank rows between header and data
+        let dataStartIndex = 1;
+        while(dataStartIndex < cleanRows.length && cleanRows[dataStartIndex].every(cell => !norm(cell))){
+          dataStartIndex++;
+        }
+
+        rawRows = cleanRows.slice(dataStartIndex).map(row => {
           const out = {};
           uniqueFields.forEach((f, i) => {
             out[f] = row[i] ?? "";
@@ -1169,3 +1176,4 @@
 </script>
 </body>
 </html>
+
