@@ -523,7 +523,7 @@
       dynamicTyping: false,
       complete: (results) => {
         const rows = results.data || [];
-        const rawFields = (rows[0] || []).map(v => String(v ?? "").replace(/^\uFEFF/, "").trim());
+        const rawFields = rows[0] || [];
         const uniqueFields = makeHeadersUnique(rawFields);
 
         rawRows = rows.slice(1).map(row => {
