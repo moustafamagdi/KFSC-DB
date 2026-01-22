@@ -518,16 +518,19 @@
     const cleanCsv = lines.slice(headerIndex).join("\n");
 
     Papa.parse(cleanCsv, {
-      header: true,
+      header: false,
       skipEmptyLines: true,
       dynamicTyping: false,
       complete: (results) => {
-        const rawFields = results.meta?.fields || [];
+        const rows = results.data || [];
+        const rawFields = rows[0] || [];
         const uniqueFields = makeHeadersUnique(rawFields);
 
-        rawRows = (results.data || []).map(r => {
+        rawRows = rows.slice(1).map(row => {
           const out = {};
-          rawFields.forEach((f, i) => out[uniqueFields[i]] = r[f]);
+          uniqueFields.forEach((f, i) => {
+            out[f] = row[i] ?? "";
+          });
 
           // Add computed columns
           const computed = computeAgingAndSLA(out);
