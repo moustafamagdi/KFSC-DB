@@ -372,14 +372,14 @@
   // ---------------------------
   // Header detection for your export
   // ---------------------------
-  function detectHeaderRow(lines){
+  function detectHeaderRow(rows){
     const mustHave = ["S.N.", "Drawing No.", "Description"];
     const shouldHave = ["Level", "Zone", "Discipline", "Status-VP", "Curr. Code", "Workflow No."];
 
-    for(let i=0; i<Math.min(lines.length, 150); i++){
-      const line = (lines[i] || "").replace(/^\uFEFF/, "");
-      const mustHits = mustHave.filter(h => line.includes(h)).length;
-      const shouldHits = shouldHave.filter(h => line.includes(h)).length;
+    for(let i=0; i<Math.min(rows.length, 200); i++){
+      const row = (rows[i] || []).map(v => (v ?? "").toString().replace(/^\uFEFF/, ""));
+      const mustHits = mustHave.filter(h => row.includes(h)).length;
+      const shouldHits = shouldHave.filter(h => row.includes(h)).length;
       if(mustHits === mustHave.length && shouldHits >= 2){
         return i;
       }
@@ -505,28 +505,26 @@
   function loadCsvText(csvText){
     try { localStorage.setItem(LS_KEY, csvText); } catch(e) {}
 
-    const lines = csvText.split(/\r?\n/);
-    const headerIndex = detectHeaderRow(lines);
-
-    if(headerIndex === -1){
-      alert("Header row not found. Ensure CSV contains: S.N., Drawing No., Description, ...");
-      console.log("First 30 lines:", lines.slice(0,30));
-      return;
-    }
-
-    lastHeaderLine = headerIndex + 1;
-    const cleanCsv = lines.slice(headerIndex).join("\n");
-
-    Papa.parse(cleanCsv, {
+    Papa.parse(csvText, {
       header: false,
       skipEmptyLines: true,
       dynamicTyping: false,
       complete: (results) => {
         const rows = results.data || [];
-        const rawFields = rows[0] || [];
+        const headerIndex = detectHeaderRow(rows);
+
+        if(headerIndex === -1){
+          alert("Header row not found. Ensure CSV contains: S.N., Drawing No., Description, ...");
+          console.log("First 30 rows:", rows.slice(0,30));
+          return;
+        }
+
+        lastHeaderLine = headerIndex + 1;
+        const cleanRows = rows.slice(headerIndex);
+        const rawFields = cleanRows[0] || [];
         const uniqueFields = makeHeadersUnique(rawFields);
 
-        rawRows = rows.slice(1).map(row => {
+        rawRows = cleanRows.slice(1).map(row => {
           const out = {};
           uniqueFields.forEach((f, i) => {
             out[f] = row[i] ?? "";
@@ -642,8 +640,10 @@
       layout: "fitDataStretch",
       height: "auto",
       maxHeight: "540px",
-      pagination: true,
+      pagination: "local",
       paginationSize: 25,
+      paginationSizeSelector: [25, 50, 100, 200],
+      paginationCounter: "rows",
       movableColumns: true,
       resizableColumnFit: true,
       placeholder: "No data (check filters)…",
