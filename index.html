@@ -377,7 +377,7 @@
     const shouldHave = ["Level", "Zone", "Discipline", "Status-VP", "Curr. Code", "Workflow No."];
 
     for(let i=0; i<Math.min(lines.length, 150); i++){
-      const line = lines[i] || "";
+      const line = (lines[i] || "").replace(/^\uFEFF/, "");
       const mustHits = mustHave.filter(h => line.includes(h)).length;
       const shouldHits = shouldHave.filter(h => line.includes(h)).length;
       if(mustHits === mustHave.length && shouldHits >= 2){
@@ -640,7 +640,8 @@
       data: [],
       columns: tabCols,
       layout: "fitDataStretch",
-      height: "540px",
+      height: "auto",
+      maxHeight: "540px",
       pagination: true,
       paginationSize: 25,
       movableColumns: true,
