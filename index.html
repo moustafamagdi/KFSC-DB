@@ -10,12 +10,19 @@
 
   <style>
     :root { --gap: 12px; }
-    body { font-family: system-ui, Segoe UI, Arial; margin: 0; background: #f6f7fb; color: #111; }
-    header { padding: 14px 16px; background: #111827; color: #fff; }
-    header h1 { margin: 0; font-size: 16px; font-weight: 650; }
-    header .sub { opacity: .85; font-size: 12px; margin-top: 4px; }
+    body { font-family: "Inter", system-ui, Segoe UI, Arial; margin: 0; background: #f3f5fb; color: #0f172a; }
+    header { padding: 16px 18px 8px; background: #0f172a; color: #fff; box-shadow: 0 8px 24px rgba(15,23,42,.18); }
+    header h1 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: .2px; }
+    header .sub { opacity: .75; font-size: 12px; margin-top: 6px; }
 
-    .wrap { padding: 14px 16px; }
+    .topnav { display: flex; gap: 8px; padding: 10px 18px 16px; background: #0f172a; }
+    .topnav button {
+      border: 1px solid rgba(148,163,184,.35); background: rgba(30,41,59,.65); color: #e2e8f0;
+      padding: 8px 14px; border-radius: 999px; font-size: 12px; cursor: pointer;
+    }
+    .topnav button.active { background: #e2e8f0; color: #0f172a; font-weight: 700; }
+
+    .wrap { padding: 18px; }
     .row { display: grid; gap: var(--gap); }
     .row.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .row.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -23,22 +30,22 @@
     @media (max-width: 1100px) { .row.cols-4 { grid-template-columns: repeat(2, 1fr); } }
     @media (max-width: 650px) { .row.cols-4, .row.cols-3, .row.cols-2 { grid-template-columns: 1fr; } }
 
-    .card { background: #fff; border-radius: 14px; padding: 12px; box-shadow: 0 1px 8px rgba(0,0,0,.06); }
-    .card h2 { margin: 0 0 10px; font-size: 13px; }
+    .card { background: #fff; border-radius: 16px; padding: 14px; box-shadow: 0 1px 12px rgba(15,23,42,.08); border: 1px solid #eef2f7; }
+    .card h2 { margin: 0 0 10px; font-size: 13px; color: #0f172a; }
     .kpi { display: flex; align-items: baseline; gap: 10px; }
-    .kpi .val { font-size: 26px; font-weight: 800; }
-    .kpi .lbl { font-size: 12px; opacity: .75; }
+    .kpi .val { font-size: 26px; font-weight: 800; color: #0f172a; }
+    .kpi .lbl { font-size: 12px; opacity: .7; }
 
     .controls { display: grid; gap: 10px; grid-template-columns: 1.2fr 1fr 1fr 1fr 1fr; align-items: end; }
     @media (max-width: 1100px) { .controls { grid-template-columns: 1fr 1fr; } }
     .ctrl label { display: block; font-size: 11px; opacity: .7; margin-bottom: 6px; }
     .ctrl input, .ctrl select, .ctrl button {
-      width: 100%; padding: 9px 10px; border: 1px solid #e5e7eb; border-radius: 10px; background: #fff;
-      font-size: 13px;
+      width: 100%; padding: 9px 10px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff;
+      font-size: 13px; box-shadow: inset 0 1px 0 rgba(15,23,42,.04);
     }
-    .ctrl button { cursor: pointer; background: #111827; color: #fff; border: 0; }
-    .ctrl button.secondary { background: #374151; }
-    .ctrl button.ghost { background: #eef2ff; color: #111827; border: 1px solid #e5e7eb; }
+    .ctrl button { cursor: pointer; background: #0f172a; color: #fff; border: 0; }
+    .ctrl button.secondary { background: #334155; }
+    .ctrl button.ghost { background: #eef2ff; color: #0f172a; border: 1px solid #e5e7eb; }
     .hint { font-size: 12px; opacity: .7; margin-top: 8px; }
 
     canvas { width: 100% !important; height: 260px !important; }
@@ -47,10 +54,10 @@
     .small { font-size: 12px; opacity: .75; }
 
     .pill { display: inline-block; padding: 3px 8px; border-radius: 999px; background: #eef2ff; font-size: 11px; }
-    .danger { background: #fee2e2; }
-    .warn { background: #fef3c7; }
-    .ok { background: #dcfce7; }
-    .muted { background: #f3f4f6; }
+    .danger { background: #fee2e2; color: #991b1b; }
+    .warn { background: #fef3c7; color: #92400e; }
+    .ok { background: #dcfce7; color: #166534; }
+    .muted { background: #f3f4f6; color: #475569; }
 
     .footer { margin-top: 10px; font-size: 12px; opacity: .75; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
@@ -66,6 +73,14 @@
     .divider { height: 1px; background: #eef2f7; margin: 10px 0; }
 
     .activeFilters { display:flex; gap:8px; flex-wrap:wrap; }
+    .page { display: none; }
+    .page.active { display: block; }
+    .pageTitle { font-size: 15px; font-weight: 700; color: #0f172a; margin: 6px 0 12px; }
+    .heroRow { display: grid; gap: var(--gap); grid-template-columns: 2fr 1fr; }
+    @media (max-width: 1100px) { .heroRow { grid-template-columns: 1fr; } }
+    .insight { display: grid; gap: 8px; }
+    .insight .metric { font-size: 20px; font-weight: 750; }
+    .insight .caption { font-size: 12px; opacity: .7; }
   </style>
 </head>
 
@@ -74,6 +89,11 @@
   <h1>KFSC — Shop Drawings & Model Log Dashboard</h1>
   <div class="sub">Actionable: Aging + Bottlenecks + Group Board • Click charts/heatmap to filter • Shareable URL</div>
 </header>
+<nav class="topnav">
+  <button class="navBtn active" data-page="overview" type="button">Overview</button>
+  <button class="navBtn" data-page="operations" type="button">Operations</button>
+  <button class="navBtn" data-page="data" type="button">Data</button>
+</nav>
 
 <div class="wrap">
   <div class="card">
@@ -132,67 +152,112 @@
 
   <div style="height:12px"></div>
 
-  <div class="row cols-4">
-    <div class="card">
-      <h2>KPIs</h2>
-      <div class="kpi"><div class="val" id="kpiTotal">—</div><div class="lbl">Total rows</div></div>
-      <div class="kpi"><div class="val" id="kpiSubmitted">—</div><div class="lbl">With Workflow No.</div></div>
-      <div class="kpi"><div class="val" id="kpiCodeB">—</div><div class="lbl">Curr. Code = B</div></div>
-      <div class="kpi"><div class="val" id="kpiCodeC">—</div><div class="lbl">Curr. Code = C</div></div>
-      <div class="kpi"><div class="val" id="kpiNotStarted">—</div><div class="lbl">Status-VP contains "Not Started"</div></div>
-      <div class="footer small">KPIs based on current filters.</div>
-    </div>
-
-    <div class="card">
-      <h2>Distribution — Status-VP</h2>
-      <canvas id="chartStatus"></canvas>
-      <div class="clickHint">Click a bar to filter Status-VP.</div>
-    </div>
-
-    <div class="card">
-      <h2>Distribution — Current Code</h2>
-      <canvas id="chartCode"></canvas>
-      <div class="clickHint">Click a bar to filter Curr. Code.</div>
-    </div>
-
-    <div class="card">
-      <h2>Heatmap — Level × Zone</h2>
-      <div id="heatmap" class="small">Upload CSV to render…</div>
-      <div class="clickHint">Click a cell to filter Level + Zone.</div>
-    </div>
-  </div>
-
-  <div style="height:12px"></div>
-
-  <div class="row cols-2">
-    <div class="card">
-      <h2>Action Board — Top Bottlenecks (Oldest 20)</h2>
-      <div class="small">
-        Aging uses best available date (priority): <span class="mono">Curr. Code Date → Consult. Rep → Consult. Sub → SBG Approval/Sub</span>.
+  <section class="page active" data-page="overview">
+    <div class="pageTitle">Overview</div>
+    <div class="heroRow">
+      <div class="card">
+        <h2>KPIs Snapshot</h2>
+        <div class="row cols-2">
+          <div class="kpi"><div class="val" id="kpiTotal">—</div><div class="lbl">Total rows</div></div>
+          <div class="kpi"><div class="val" id="kpiSubmitted">—</div><div class="lbl">With Workflow No.</div></div>
+          <div class="kpi"><div class="val" id="kpiCodeB">—</div><div class="lbl">Curr. Code = B</div></div>
+          <div class="kpi"><div class="val" id="kpiCodeC">—</div><div class="lbl">Curr. Code = C</div></div>
+          <div class="kpi"><div class="val" id="kpiNotStarted">—</div><div class="lbl">Status-VP contains "Not Started"</div></div>
+        </div>
+        <div class="footer small">KPIs based on current filters.</div>
       </div>
-      <div style="height:10px"></div>
-      <div id="bottlenecks" class="bList"></div>
-    </div>
-
-    <div class="card">
-      <h2>Group Board (worst-first)</h2>
-      <div class="small">
-        Grouping: <span class="mono">Level + Zone + Discipline + Sub-Discipline</span>
+      <div class="card insight">
+        <h2>Daily Focus</h2>
+        <div>
+          <div class="metric" id="kpiHighRisk">—</div>
+          <div class="caption">Items over 14 days old</div>
+        </div>
+        <div>
+          <div class="metric" id="kpiReadyToClose">—</div>
+          <div class="caption">Items with SLA = OK</div>
+        </div>
+        <div class="small">Use this to align standups and close open loops.</div>
       </div>
-      <div style="height:10px"></div>
-      <div id="groupBoard"></div>
-      <div class="footer small" id="loadInfo"></div>
     </div>
-  </div>
 
-  <div style="height:12px"></div>
+    <div style="height:12px"></div>
 
-  <div class="card">
-    <h2>Interactive Table</h2>
-    <div class="small">Now includes <b>AgingDays</b> and <b>SLA</b> columns. Frozen first columns for daily use.</div>
-    <div style="height:10px"></div>
-    <div id="table"></div>
-  </div>
+    <div class="row cols-3">
+      <div class="card">
+        <h2>Distribution — Status-VP</h2>
+        <canvas id="chartStatus"></canvas>
+        <div class="clickHint">Click a bar to filter Status-VP.</div>
+      </div>
+
+      <div class="card">
+        <h2>Distribution — Current Code</h2>
+        <canvas id="chartCode"></canvas>
+        <div class="clickHint">Click a bar to filter Curr. Code.</div>
+      </div>
+
+      <div class="card">
+        <h2>SLA Status Mix</h2>
+        <canvas id="chartSla"></canvas>
+        <div class="clickHint">Tracks SLA buckets from AgingDays.</div>
+      </div>
+    </div>
+
+    <div style="height:12px"></div>
+
+    <div class="row cols-3">
+      <div class="card">
+        <h2>Heatmap — Level × Zone</h2>
+        <div id="heatmap" class="small">Upload CSV to render…</div>
+        <div class="clickHint">Click a cell to filter Level + Zone.</div>
+      </div>
+
+      <div class="card">
+        <h2>Aging Buckets</h2>
+        <canvas id="chartAging"></canvas>
+        <div class="clickHint">Aging in days (0-7, 8-14, 15-30, 31+).</div>
+      </div>
+
+      <div class="card">
+        <h2>Discipline Mix</h2>
+        <canvas id="chartDiscipline"></canvas>
+        <div class="clickHint">Highlights where volume clusters.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" data-page="operations">
+    <div class="pageTitle">Operations</div>
+    <div class="row cols-2">
+      <div class="card">
+        <h2>Action Board — Top Bottlenecks (Oldest 20)</h2>
+        <div class="small">
+          Aging uses best available date (priority): <span class="mono">Curr. Code Date → Consult. Rep → Consult. Sub → SBG Approval/Sub</span>.
+        </div>
+        <div style="height:10px"></div>
+        <div id="bottlenecks" class="bList"></div>
+      </div>
+
+      <div class="card">
+        <h2>Group Board (worst-first)</h2>
+        <div class="small">
+          Grouping: <span class="mono">Level + Zone + Discipline + Sub-Discipline</span>
+        </div>
+        <div style="height:10px"></div>
+        <div id="groupBoard"></div>
+        <div class="footer small" id="loadInfo"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="page" data-page="data">
+    <div class="pageTitle">Data</div>
+    <div class="card">
+      <h2>Interactive Table</h2>
+      <div class="small">Now includes <b>AgingDays</b> and <b>SLA</b> columns. Frozen first columns for daily use.</div>
+      <div style="height:10px"></div>
+      <div id="table"></div>
+    </div>
+  </section>
 </div>
 
 <!-- Libraries -->
@@ -262,6 +327,9 @@
 
   let chartStatus = null;
   let chartCode = null;
+  let chartSla = null;
+  let chartAging = null;
+  let chartDiscipline = null;
 
   let lastHeaderLine = null;
 
@@ -286,9 +354,14 @@
     kpiCodeB: document.getElementById("kpiCodeB"),
     kpiCodeC: document.getElementById("kpiCodeC"),
     kpiNotStarted: document.getElementById("kpiNotStarted"),
+    kpiHighRisk: document.getElementById("kpiHighRisk"),
+    kpiReadyToClose: document.getElementById("kpiReadyToClose"),
 
     chartStatusCanvas: document.getElementById("chartStatus"),
     chartCodeCanvas: document.getElementById("chartCode"),
+    chartSlaCanvas: document.getElementById("chartSla"),
+    chartAgingCanvas: document.getElementById("chartAging"),
+    chartDisciplineCanvas: document.getElementById("chartDiscipline"),
 
     heatmap: document.getElementById("heatmap"),
     bottlenecks: document.getElementById("bottlenecks"),
@@ -445,16 +518,19 @@
     const cleanCsv = lines.slice(headerIndex).join("\n");
 
     Papa.parse(cleanCsv, {
-      header: true,
+      header: false,
       skipEmptyLines: true,
       dynamicTyping: false,
       complete: (results) => {
-        const rawFields = results.meta?.fields || [];
+        const rows = results.data || [];
+        const rawFields = rows[0] || [];
         const uniqueFields = makeHeadersUnique(rawFields);
 
-        rawRows = (results.data || []).map(r => {
+        rawRows = rows.slice(1).map(row => {
           const out = {};
-          rawFields.forEach((f, i) => out[uniqueFields[i]] = r[f]);
+          uniqueFields.forEach((f, i) => {
+            out[f] = row[i] ?? "";
+          });
 
           // Add computed columns
           const computed = computeAgingAndSLA(out);
@@ -621,12 +697,16 @@
     const codeB = rows.filter(r => norm(r["Curr. Code"]) === "B").length;
     const codeC = rows.filter(r => norm(r["Curr. Code"]) === "C").length;
     const notStarted = rows.filter(r => norm(r["Status-VP"]).toLowerCase().includes("not started")).length;
+    const highRisk = rows.filter(r => Number(r["AgingDays"]) > 14).length;
+    const readyToClose = rows.filter(r => norm(r["SLA"]) === "OK").length;
 
     els.kpiTotal.textContent = total.toLocaleString();
     els.kpiSubmitted.textContent = withWF.toLocaleString();
     els.kpiCodeB.textContent = codeB.toLocaleString();
     els.kpiCodeC.textContent = codeC.toLocaleString();
     els.kpiNotStarted.textContent = notStarted.toLocaleString();
+    els.kpiHighRisk.textContent = highRisk.toLocaleString();
+    els.kpiReadyToClose.textContent = readyToClose.toLocaleString();
   }
 
   // ---------------------------
@@ -653,11 +733,44 @@
     return c;
   }
 
+  function renderDonutChart(chartRef, canvas, labels, data, colors){
+    if(chartRef) chartRef.destroy();
+    return new Chart(canvas, {
+      type: "doughnut",
+      data: { labels, datasets: [{ data, backgroundColor: colors }] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: "bottom" } },
+        cutout: "70%",
+      }
+    });
+  }
+
   function updateCharts(){
     if(!filteredRows.length) return;
 
     const topStatus = countBy(filteredRows, "Status-VP").slice(0,10);
     const topCode = countBy(filteredRows, "Curr. Code").slice(0,10);
+    const topDiscipline = countBy(filteredRows, "Discipline").slice(0,8);
+
+    const slaMap = new Map();
+    filteredRows.forEach(r => {
+      const k = norm(r["SLA"]) || "Unknown";
+      slaMap.set(k, (slaMap.get(k) || 0) + 1);
+    });
+    const slaLabels = [...slaMap.keys()];
+    const slaData = [...slaMap.values()];
+
+    const agingBuckets = [
+      { label: "0-7", test: v => v <= 7 },
+      { label: "8-14", test: v => v > 7 && v <= 14 },
+      { label: "15-30", test: v => v > 14 && v <= 30 },
+      { label: "31+", test: v => v > 30 },
+    ];
+    const agingData = agingBuckets.map(b =>
+      filteredRows.filter(r => Number.isFinite(Number(r["AgingDays"])) && b.test(Number(r["AgingDays"]))).length
+    );
 
     chartStatus = renderBarChart(
       chartStatus,
@@ -673,6 +786,30 @@
       topCode.map(x => x[0]),
       topCode.map(x => x[1]),
       (label) => { els.currCodeFilter.value = (label === "(blank)") ? "" : label; applyAll(); }
+    );
+
+    chartSla = renderDonutChart(
+      chartSla,
+      els.chartSlaCanvas,
+      slaLabels,
+      slaData,
+      ["#22c55e", "#f59e0b", "#ef4444", "#94a3b8", "#6366f1"]
+    );
+
+    chartAging = renderBarChart(
+      chartAging,
+      els.chartAgingCanvas,
+      agingBuckets.map(b => b.label),
+      agingData,
+      () => {}
+    );
+
+    chartDiscipline = renderBarChart(
+      chartDiscipline,
+      els.chartDisciplineCanvas,
+      topDiscipline.map(x => x[0]),
+      topDiscipline.map(x => x[1]),
+      (label) => { els.disciplineFilter.value = (label === "(blank)") ? "" : label; applyAll(); }
     );
   }
 
@@ -969,6 +1106,20 @@
   // ---------------------------
   // Events
   // ---------------------------
+  function setActivePage(page){
+    document.querySelectorAll(".page").forEach(section => {
+      section.classList.toggle("active", section.dataset.page === page);
+    });
+    document.querySelectorAll(".navBtn").forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.page === page);
+    });
+    if(page) location.hash = page;
+  }
+
+  document.querySelectorAll(".navBtn").forEach(btn => {
+    btn.addEventListener("click", () => setActivePage(btn.dataset.page));
+  });
+
   els.fileInput.addEventListener("change", (e) => {
     const f = e.target.files?.[0];
     if(!f) return;
@@ -1005,6 +1156,8 @@
   // ---------------------------
   (function boot(){
     renderActiveFilters();
+    const hash = location.hash.replace("#", "");
+    if(hash) setActivePage(hash);
     try {
       const last = localStorage.getItem(LS_KEY);
       if(last && last.length > 100) loadCsvText(last);
