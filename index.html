@@ -63,7 +63,6 @@
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 
     .twoActions { display:flex; gap:10px; flex-wrap:wrap; }
-    .miniActions { display:flex; gap:10px; }
     .bList { display:grid; gap:10px; }
     .bItem { padding:10px; border:1px solid #eef2f7; border-radius:12px; }
     .bTitle { font-size:12px; font-weight:750; }
@@ -267,6 +266,16 @@
 
 <script>
   // ---------------------------
+  // Debug helper
+  // ---------------------------
+  const DBG = true;
+  function logGroup(title, fn){
+    if(!DBG) return;
+    console.groupCollapsed(title);
+    try { fn && fn(); } finally { console.groupEnd(); }
+  }
+
+  // ---------------------------
   // Helpers
   // ---------------------------
   const LS_KEY = "kfsc_shopdrawings_last_csv_v3";
@@ -298,7 +307,6 @@
   function parseDateSafe(v){
     const s = norm(v);
     if(!s) return null;
-    // works for YYYY-MM-DD and many excel exports
     const d = new Date(s);
     if(!isNaN(d.getTime())) return d;
     return null;
@@ -324,6 +332,7 @@
   let rawRows = [];
   let filteredRows = [];
   let table = null;
+  let tableReady = false;
 
   let chartStatus = null;
   let chartCode = null;
@@ -370,22 +379,18 @@
   };
 
   // ---------------------------
-  // Header detection for your export
+  // Header detection
   // ---------------------------
-function detectHeaderRow(rows){
+  function detectHeaderRow(rows){
     const mustHave = ["S.N.", "Drawing No.", "Description"];
     const shouldHave = ["Level", "Zone", "Discipline", "Status-VP", "Curr. Code", "Workflow No."];
 
     for(let i=0; i<Math.min(rows.length, 200); i++){
-      const row = (rows[i] || []).map(v => {
-        const cleaned = (v ?? "").toString().replace(/^\uFEFF/, "").trim();
-        return cleaned;
-      });
-      
-      // Check if row has mostly empty cells (metadata row)
+      const row = (rows[i] || []).map(v => (v ?? "").toString().replace(/^\uFEFF/, "").trim());
+
       const nonEmpty = row.filter(cell => cell !== "").length;
-      if(nonEmpty < 3) continue; // Skip rows with less than 3 non-empty cells
-      
+      if(nonEmpty < 3) continue;
+
       const mustHits = mustHave.filter(h => row.includes(h)).length;
       const shouldHits = shouldHave.filter(h => row.includes(h)).length;
       if(mustHits === mustHave.length && shouldHits >= 2){
@@ -407,10 +412,9 @@ function detectHeaderRow(rows){
   }
 
   // ---------------------------
-  // Aging & SLA (core feature)
+  // Aging & SLA
   // ---------------------------
   function getBestTouchDate(row){
-    // Priority order based on your CSV structure
     const priorityCols = [
       "Curr. Code Date",
       "Consult. Rep (02)", "Consult. Rep (01)", "Consult. Rep (00)",
@@ -443,7 +447,7 @@ function detectHeaderRow(rows){
   }
 
   // ---------------------------
-  // URL filters (shareable)
+  // URL filters
   // ---------------------------
   function getFiltersFromUI(){
     return {
@@ -511,6 +515,11 @@ function detectHeaderRow(rows){
   // Load CSV
   // ---------------------------
   function loadCsvText(csvText){
+    logGroup("CSV Load: start", () => {
+      console.log("CSV chars:", (csvText || "").length);
+      console.log("CSV first 400 chars:\n", String(csvText || "").slice(0, 400));
+    });
+
     try { localStorage.setItem(LS_KEY, csvText); } catch(e) {}
 
     Papa.parse(csvText, {
@@ -518,8 +527,30 @@ function detectHeaderRow(rows){
       skipEmptyLines: true,
       dynamicTyping: false,
       complete: (results) => {
+
+        logGroup("CSV Parse: raw rows", () => {
+          const rows0 = results.data || [];
+          console.log("Total parsed rows:", rows0.length);
+          console.log("Row[0] (array):", rows0[0]);
+          console.log("Row[1] (array):", rows0[1]);
+          console.log("Row[2] (array):", rows0[2]);
+          console.log("Row[0] length:", rows0[0]?.length, "Row[1] length:", rows0[1]?.length);
+          console.table(rows0.slice(0, 15).map((r,i)=>({
+            i,
+            len: r?.length ?? 0,
+            firstNonEmptyIdx: (r||[]).findIndex(x => norm(x) !== ""),
+            preview: (r||[]).slice(0,8).map(x=>norm(x)).join(" | ")
+          })));
+        });
+
         const rows = results.data || [];
         const headerIndex = detectHeaderRow(rows);
+
+        logGroup("Header Detection", () => {
+          console.log("Detected headerIndex:", headerIndex, " (line:", headerIndex + 1, ")");
+          console.log("Header row raw array:", rows[headerIndex]);
+          console.log("Header row preview:", (rows[headerIndex] || []).slice(0, 20));
+        });
 
         if(headerIndex === -1){
           alert("Header row not found. Ensure CSV contains: S.N., Drawing No., Description, ...");
@@ -527,11 +558,20 @@ function detectHeaderRow(rows){
           return;
         }
 
-
-lastHeaderLine = headerIndex + 1;
+        lastHeaderLine = headerIndex + 1;
         const cleanRows = rows.slice(headerIndex);
         const rawFields = cleanRows[0] || [];
         const uniqueFields = makeHeadersUnique(rawFields);
+
+        logGroup("Header Fields (mapped)", () => {
+          console.log("Header fields count:", uniqueFields.length);
+          console.log("First 25 fields:", uniqueFields.slice(0,25));
+          console.log(
+            "Index of S.N.:", uniqueFields.indexOf("S.N."),
+            "| Drawing No.:", uniqueFields.indexOf("Drawing No."),
+            "| Description:", uniqueFields.indexOf("Description")
+          );
+        });
 
         // Skip blank rows between header and data
         let dataStartIndex = 1;
@@ -539,13 +579,16 @@ lastHeaderLine = headerIndex + 1;
           dataStartIndex++;
         }
 
+        logGroup("Data Start", () => {
+          console.log("dataStartIndex (within cleanRows):", dataStartIndex, " => file line:", headerIndex + dataStartIndex + 1);
+          console.log("First data row raw array:", cleanRows[dataStartIndex]);
+          console.log("First data row preview:", (cleanRows[dataStartIndex]||[]).slice(0,12));
+        });
+
         rawRows = cleanRows.slice(dataStartIndex).map(row => {
           const out = {};
-          uniqueFields.forEach((f, i) => {
-            out[f] = row[i] ?? "";
-          });
+          uniqueFields.forEach((f, i) => { out[f] = row[i] ?? ""; });
 
-          // Add computed columns
           const computed = computeAgingAndSLA(out);
           out["AgingDays"] = computed.agingDays;
           out["AgingSource"] = computed.agingSource;
@@ -554,8 +597,28 @@ lastHeaderLine = headerIndex + 1;
           return out;
         });
 
-        // remove empty separators
         rawRows = rawRows.filter(r => Object.values(r).some(v => norm(v)));
+
+        logGroup("Sanity Check: first rows for S.N./Drawing No.", () => {
+          const sample = rawRows.slice(0, 15).map((r,i)=>({
+            i,
+            SN: norm(r["S.N."]),
+            DrawingNo: norm(r["Drawing No."]),
+            Description: norm(r["Description"]).slice(0, 60),
+            Level: norm(r["Level"]),
+            Zone: norm(r["Zone"]),
+          }));
+          console.table(sample);
+
+          const emptySN = rawRows.slice(0, 200).filter(r => !norm(r["S.N."])).length;
+          const emptyDN = rawRows.slice(0, 200).filter(r => !norm(r["Drawing No."])).length;
+          console.warn(`In first 200 rows => empty S.N.: ${emptySN}, empty Drawing No.: ${emptyDN}`);
+
+          if(emptySN > 0 || emptyDN > 0){
+            console.warn("If your CSV actually contains S.N. and Drawing No. values, then your data rows are offset (extra leading commas) or the header is not the real header.");
+            console.warn("Example: If a data row begins with ',,Description...' then S.N. and DrawingNo will appear empty (because they are empty in the file).");
+          }
+        });
 
         buildUIFromData(uniqueFields.concat(["AgingDays","AgingSource","SLA"]));
         applyAll();
@@ -571,7 +634,7 @@ lastHeaderLine = headerIndex + 1;
   }
 
   // ---------------------------
-  // Build UI + Tabulator (rebuild each load)
+  // Build UI + Tabulator
   // ---------------------------
   function buildUIFromData(allKeys){
     const levels = uniqSorted(rawRows.map(r => norm(r["Level"])));
@@ -635,10 +698,7 @@ lastHeaderLine = headerIndex + 1;
         }
       };
 
-      // Freeze key columns
       if(["S.N.","Drawing No.","Description"].includes(c)) col.frozen = true;
-
-      // Right-align numbers
       if(c === "AgingDays") col.hozAlign = "right";
 
       return col;
@@ -647,11 +707,16 @@ lastHeaderLine = headerIndex + 1;
     if(table){
       table.destroy();
       table = null;
+      tableReady = false;
     }
 
     table = new Tabulator("#table", {
       data: [],
       columns: tabCols,
+
+      // ✅ IMPORTANT FIX: do NOT treat dots in field names as nested paths
+      nestedFieldSeparator: false,
+
       layout: "fitDataStretch",
       height: "auto",
       maxHeight: "540px",
@@ -664,7 +729,10 @@ lastHeaderLine = headerIndex + 1;
       placeholder: "No data (check filters)…",
     });
 
-    table.on("tableBuilt", () => updateTable());
+    table.on("tableBuilt", () => {
+      tableReady = true;
+      updateTable();
+    });
   }
 
   // ---------------------------
@@ -726,7 +794,7 @@ lastHeaderLine = headerIndex + 1;
   }
 
   // ---------------------------
-  // Charts with click-to-filter
+  // Charts
   // ---------------------------
   function renderBarChart(chartRef, canvas, labels, data, onClick){
     if(chartRef) chartRef.destroy();
@@ -824,368 +892,4 @@ lastHeaderLine = headerIndex + 1;
       chartDiscipline,
       els.chartDisciplineCanvas,
       topDiscipline.map(x => x[0]),
-      topDiscipline.map(x => x[1]),
-      (label) => { els.disciplineFilter.value = (label === "(blank)") ? "" : label; applyAll(); }
-    );
-  }
-
-  // ---------------------------
-  // Heatmap with click-to-filter
-  // ---------------------------
-  function updateHeatmap(){
-    const rows = filteredRows;
-    const levels = uniqSorted(rows.map(r => norm(r["Level"])));
-    const zones = uniqSorted(rows.map(r => norm(r["Zone"])));
-
-    if(levels.length === 0 || zones.length === 0){
-      els.heatmap.innerHTML = "No data after filtering.";
-      return;
-    }
-
-    const m = {};
-    levels.forEach(L => { m[L] = {}; zones.forEach(Z => m[L][Z] = 0); });
-    rows.forEach(r => {
-      const L = norm(r["Level"]), Z = norm(r["Zone"]);
-      if(L && Z && m[L] && m[L][Z] !== undefined) m[L][Z] += 1;
-    });
-
-    const max = Math.max(...levels.flatMap(L => zones.map(Z => m[L][Z])));
-
-    let html = `<div style="overflow:auto"><table style="border-collapse:collapse; width:100%; font-size:12px">`;
-    html += `<tr><th style="text-align:left; padding:6px; border-bottom:1px solid #e5e7eb">Level \\ Zone</th>`;
-    zones.forEach(Z => html += `<th style="text-align:center; padding:6px; border-bottom:1px solid #e5e7eb">${escapeHtml(Z)}</th>`);
-    html += `</tr>`;
-
-    levels.forEach(L => {
-      html += `<tr><td style="padding:6px; border-bottom:1px solid #f1f5f9"><b>${escapeHtml(L)}</b></td>`;
-      zones.forEach(Z => {
-        const v = m[L][Z];
-        const intensity = max ? Math.round((v / max) * 80) : 0;
-
-        // clickable cell
-        html += `<td
-          data-level="${escapeHtml(L)}"
-          data-zone="${escapeHtml(Z)}"
-          style="
-            cursor:pointer;
-            text-align:center; padding:6px; border-bottom:1px solid #f1f5f9;
-            background: rgba(17,24,39, ${intensity/100});
-            color: ${intensity>40 ? "#fff" : "#111"};
-            border-radius:8px;">
-          ${v}
-        </td>`;
-      });
-      html += `</tr>`;
-    });
-
-    html += `</table></div>`;
-    els.heatmap.innerHTML = html;
-
-    // attach click handlers
-    els.heatmap.querySelectorAll("td[data-level]").forEach(td => {
-      td.addEventListener("click", () => {
-        els.levelFilter.value = td.getAttribute("data-level") || "";
-        els.zoneFilter.value = td.getAttribute("data-zone") || "";
-        applyAll();
-      });
-    });
-  }
-
-  // ---------------------------
-  // Bottlenecks (Top 20 oldest needing follow-up)
-  // ---------------------------
-  function updateBottlenecks(){
-    const now = new Date();
-
-    const enriched = filteredRows.map(r => {
-      const last = getBestTouchDate(r);
-      const age = last ? daysBetween(last.date, now) : null;
-      return { r, last, age };
-    });
-
-    // Candidate rules: anything likely not finished
-    const candidates = enriched.filter(x => {
-      const st = norm(x.r["Status-VP"]).toLowerCase();
-      const code = norm(x.r["Curr. Code"]);
-      if(!code) return true;
-      if(code === "C") return true;
-      if(st.includes("consultant") || st.includes("review") || st.includes("on hold") || st.includes("not started")) return true;
-      return false;
-    });
-
-    candidates.sort((a,b) => (b.age ?? -1) - (a.age ?? -1));
-    const top = candidates.slice(0, 20);
-
-    if(!top.length){
-      els.bottlenecks.innerHTML = `<div class="small">No bottlenecks found (with current filters).</div>`;
-      return;
-    }
-
-    els.bottlenecks.innerHTML = top.map(x => {
-      const dn = norm(x.r["Drawing No."]) || "(no drawing)";
-      const desc = norm(x.r["Description"]) || "";
-      const L = norm(x.r["Level"]) || "-";
-      const Z = norm(x.r["Zone"]) || "-";
-      const st = norm(x.r["Status-VP"]) || "(blank)";
-      const code = norm(x.r["Curr. Code"]) || "(blank)";
-      const wf = norm(x.r["Workflow No."]) || norm(x.r["Workflow No. (01)"]) || norm(x.r["Workflow No. (02)"]) || "";
-
-      const ageText = (x.age === null)
-        ? pill("Unknown", "warn")
-        : pill(`${x.age}d`, x.age > 30 ? "danger" : (x.age > 14 ? "warn" : (x.age > 7 ? "warn" : "ok")));
-
-      const src = x.last ? `${x.last.source}=${x.last.date.toISOString().slice(0,10)}` : "No date found";
-
-      return `
-        <div class="bItem">
-          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-            ${ageText}
-            ${pill(`L:${L}`, "muted")}
-            ${pill(`Z:${Z}`, "muted")}
-            ${pill(`Code:${code}`, code==="C"?"danger":(code==="B"?"warn":"muted"))}
-            ${pill(`${st}`, st.toLowerCase().includes("not started")?"danger":(st.toLowerCase().includes("on hold")?"warn":"muted"))}
-          </div>
-          <div class="bTitle mono" style="margin-top:8px;">${escapeHtml(dn)}</div>
-          <div class="bDesc">${escapeHtml(desc)}</div>
-          <div class="bMeta">Last touch: <span class="mono">${escapeHtml(src)}</span>${wf ? ` • WF: <span class="mono">${escapeHtml(wf)}</span>` : ""}</div>
-        </div>
-      `;
-    }).join("");
-  }
-
-  // ---------------------------
-  // Group Board (worst-first)
-  // ---------------------------
-  function updateGroupBoard(){
-    const now = new Date();
-    const map = new Map();
-
-    function keyOf(r){
-      return [
-        norm(r["Level"])||"-",
-        norm(r["Zone"])||"-",
-        norm(r["Discipline"])||"-",
-        norm(r["Sub-Discipline"])||"-"
-      ].join(" | ");
-    }
-
-    filteredRows.forEach(r => {
-      const k = keyOf(r);
-      const code = norm(r["Curr. Code"]);
-      const st = norm(r["Status-VP"]).toLowerCase();
-
-      const last = getBestTouchDate(r);
-      const age = last ? daysBetween(last.date, now) : null;
-
-      if(!map.has(k)){
-        map.set(k, {
-          group: k,
-          level: norm(r["Level"])||"-",
-          zone: norm(r["Zone"])||"-",
-          discipline: norm(r["Discipline"])||"-",
-          subDiscipline: norm(r["Sub-Discipline"])||"-",
-          total: 0,
-          codeC: 0,
-          notStarted: 0,
-          onHold: 0,
-          oldest: null,
-          avgAgeSum: 0,
-          avgAgeCnt: 0,
-        });
-      }
-      const g = map.get(k);
-      g.total += 1;
-      if(code === "C") g.codeC += 1;
-      if(st.includes("not started")) g.notStarted += 1;
-      if(st.includes("on hold")) g.onHold += 1;
-
-      if(age !== null){
-        g.oldest = (g.oldest === null) ? age : Math.max(g.oldest, age);
-        g.avgAgeSum += age;
-        g.avgAgeCnt += 1;
-      }
-    });
-
-    const groups = [...map.values()].map(g => {
-      const avg = g.avgAgeCnt ? Math.round(g.avgAgeSum / g.avgAgeCnt) : "";
-      // scoring: prioritize Code C, then not started, then oldest
-      const score = (g.codeC * 1000) + (g.notStarted * 400) + (g.onHold * 200) + (g.oldest || 0);
-      return { ...g, avgAge: avg, score };
-    });
-
-    groups.sort((a,b) => b.score - a.score);
-
-    // store for export
-    window.__groupsForExport = groups;
-
-    if(!groups.length){
-      els.groupBoard.innerHTML = `<div class="small">No groups (current filters empty).</div>`;
-      return;
-    }
-
-    // simple HTML table
-    let html = `<div style="overflow:auto"><table style="border-collapse:collapse; width:100%; font-size:12px">`;
-    html += `<tr>
-      <th style="text-align:left; padding:6px; border-bottom:1px solid #e5e7eb">Group</th>
-      <th style="text-align:center; padding:6px; border-bottom:1px solid #e5e7eb">Total</th>
-      <th style="text-align:center; padding:6px; border-bottom:1px solid #e5e7eb">Code C</th>
-      <th style="text-align:center; padding:6px; border-bottom:1px solid #e5e7eb">Not Started</th>
-      <th style="text-align:center; padding:6px; border-bottom:1px solid #e5e7eb">On Hold</th>
-      <th style="text-align:center; padding:6px; border-bottom:1px solid #e5e7eb">Oldest(d)</th>
-      <th style="text-align:center; padding:6px; border-bottom:1px solid #e5e7eb">Avg(d)</th>
-    </tr>`;
-
-    groups.slice(0, 25).forEach(g => {
-      const oldest = g.oldest === null ? "" : g.oldest;
-      const oldestCls = (oldest > 30) ? "danger" : (oldest > 14 ? "warn" : (oldest > 7 ? "warn" : "ok"));
-      const codeCls = g.codeC ? "danger" : "ok";
-      const nsCls = g.notStarted ? "warn" : "ok";
-      const ohCls = g.onHold ? "warn" : "ok";
-
-      html += `<tr>
-        <td style="padding:6px; border-bottom:1px solid #f1f5f9">
-          <span class="mono">${escapeHtml(g.group)}</span>
-        </td>
-        <td style="text-align:center; padding:6px; border-bottom:1px solid #f1f5f9">${g.total}</td>
-        <td style="text-align:center; padding:6px; border-bottom:1px solid #f1f5f9">${pill(String(g.codeC), codeCls)}</td>
-        <td style="text-align:center; padding:6px; border-bottom:1px solid #f1f5f9">${pill(String(g.notStarted), nsCls)}</td>
-        <td style="text-align:center; padding:6px; border-bottom:1px solid #f1f5f9">${pill(String(g.onHold), ohCls)}</td>
-        <td style="text-align:center; padding:6px; border-bottom:1px solid #f1f5f9">${oldest === "" ? "" : pill(String(oldest), oldestCls)}</td>
-        <td style="text-align:center; padding:6px; border-bottom:1px solid #f1f5f9">${g.avgAge === "" ? "" : pill(String(g.avgAge), "muted")}</td>
-      </tr>`;
-    });
-
-    html += `</table></div>`;
-    els.groupBoard.innerHTML = html;
-  }
-
-  // ---------------------------
-  // Table update
-  // ---------------------------
-  function updateTable(){
-    if(!table) return;
-    try { table.setData(filteredRows); } catch(e) { /* tableBuilt will retry */ }
-  }
-
-  // ---------------------------
-  // Export helpers
-  // ---------------------------
-  function csvEscape(v){
-    const s = (v === null || v === undefined) ? "" : String(v);
-    if(/[",\n]/.test(s)) return `"${s.replaceAll('"', '""')}"`;
-    return s;
-  }
-
-  function exportFilteredCsv(){
-    if(filteredRows.length === 0){
-      alert("No rows to export (filters removed everything).");
-      return;
-    }
-    const cols = Object.keys(filteredRows[0]);
-    const lines = [];
-    lines.push(cols.map(csvEscape).join(","));
-    filteredRows.forEach(r => lines.push(cols.map(c => csvEscape(r[c])).join(",")));
-
-    const blob = new Blob([lines.join("\n")], {type: "text/csv;charset=utf-8"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "filtered_shopdrawings.csv";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  }
-
-  function exportGroupBoardCsv(){
-    const groups = window.__groupsForExport || [];
-    if(!groups.length){
-      alert("No group data to export.");
-      return;
-    }
-    const cols = ["level","zone","discipline","subDiscipline","total","codeC","notStarted","onHold","oldest","avgAge","score","group"];
-    const lines = [];
-    lines.push(cols.map(csvEscape).join(","));
-    groups.forEach(g => lines.push(cols.map(c => csvEscape(g[c])).join(",")));
-
-    const blob = new Blob([lines.join("\n")], {type: "text/csv;charset=utf-8"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "group_board.csv";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  }
-
-  // ---------------------------
-  // Events
-  // ---------------------------
-  function setActivePage(page){
-    document.querySelectorAll(".page").forEach(section => {
-      section.classList.toggle("active", section.dataset.page === page);
-    });
-    document.querySelectorAll(".navBtn").forEach(btn => {
-      btn.classList.toggle("active", btn.dataset.page === page);
-    });
-    if(page) location.hash = page;
-  }
-
-  document.querySelectorAll(".navBtn").forEach(btn => {
-    btn.addEventListener("click", () => setActivePage(btn.dataset.page));
-  });
-
-  els.fileInput.addEventListener("change", (e) => {
-    const f = e.target.files?.[0];
-    if(!f) return;
-    const reader = new FileReader();
-    reader.onload = () => loadCsvText(String(reader.result || ""));
-    reader.readAsText(f);
-  });
-
-  ["input","change"].forEach(ev => {
-    els.searchBox.addEventListener(ev, applyAll);
-    els.levelFilter.addEventListener(ev, applyAll);
-    els.zoneFilter.addEventListener(ev, applyAll);
-    els.statusVpFilter.addEventListener(ev, applyAll);
-    els.disciplineFilter.addEventListener(ev, applyAll);
-    els.currCodeFilter.addEventListener(ev, applyAll);
-  });
-
-  els.resetBtn.addEventListener("click", () => {
-    els.searchBox.value = "";
-    els.levelFilter.value = "";
-    els.zoneFilter.value = "";
-    els.statusVpFilter.value = "";
-    els.disciplineFilter.value = "";
-    els.currCodeFilter.value = "";
-    applyAll();
-  });
-
-  els.exportBtn.addEventListener("click", exportFilteredCsv);
-  els.exportGroupsBtn.addEventListener("click", exportGroupBoardCsv);
-  els.copyLinkBtn.addEventListener("click", copyShareLink);
-
-  // ---------------------------
-  // Boot: auto-load last CSV if allowed
-  // ---------------------------
-  (function boot(){
-    renderActiveFilters();
-    const hash = location.hash.replace("#", "");
-    if(hash) setActivePage(hash);
-    try {
-      const last = localStorage.getItem(LS_KEY);
-      if(last && last.length > 100) loadCsvText(last);
-    } catch (e) {
-      // ignore storage blocks
-    }
-  })();
-</script>
-</body>
-</html>
-
-
-
-
-
+      topDiscipline.map(x => x
