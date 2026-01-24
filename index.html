@@ -377,7 +377,15 @@
     const shouldHave = ["Level", "Zone", "Discipline", "Status-VP", "Curr. Code", "Workflow No."];
 
     for(let i=0; i<Math.min(rows.length, 200); i++){
-      const row = (rows[i] || []).map(v => (v ?? "").toString().replace(/^\uFEFF/, ""));
+      const row = (rows[i] || []).map(v => {
+        const cleaned = (v ?? "").toString().replace(/^\uFEFF/, "").trim();
+        return cleaned;
+      });
+      
+      // Check if row has mostly empty cells (metadata row)
+      const nonEmpty = row.filter(cell => cell !== "").length;
+      if(nonEmpty < 3) continue; // Skip rows with less than 3 non-empty cells
+      
       const mustHits = mustHave.filter(h => row.includes(h)).length;
       const shouldHits = shouldHave.filter(h => row.includes(h)).length;
       if(mustHits === mustHave.length && shouldHits >= 2){
@@ -1176,5 +1184,6 @@ lastHeaderLine = headerIndex + 1;
 </script>
 </body>
 </html>
+
 
 
